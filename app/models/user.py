@@ -1,0 +1,36 @@
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, DECIMAL, ForeignKey, Enum
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+from app.db.base import Base
+import enum
+
+class UserRole(str, enum.Enum):
+    USER = "user"
+    ADMIN = "admin"
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    phone = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    full_name = Column(String, nullable=True)
+    role = Column(Enum(UserRole), default=UserRole.USER)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Wallet (One-to-One)
+    wallet = relationship("Wallet", back_populates="user", uselist=False)
+    predictions = relationship("Prediction", back_populates="user")
+    transactions = relationship("Transaction", back_populates="user")
+
+class Wallet(Base):
+    __tablename__ = "wallets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True)
+    balance = Column(DECIMAL(10, 2), default=0.00)  # GDES Currency
+    total_won = Column(DECIMAL(10, 2), default=0.00)
+    total_deposited = Column(DECIMAL(10, 2), default=0.00)
+    
+    user = relationship("User", back_populates="wallet")
