@@ -16,7 +16,8 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=True)
     role = Column(Enum(UserRole, native_enum=False, values_callable=lambda obj: [e.value for e in obj]), default=UserRole.USER)
-    is_active = Column(Boolean, default=True)
+    is_active = Column(Boolean, default=False)
+    otp_code = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Wallet (One-to-One)

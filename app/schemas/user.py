@@ -33,3 +33,22 @@ class UserResponse(UserBase):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+class OTPVerify(BaseModel):
+    phone: str
+    otp: str
+
+class ForgotPassword(BaseModel):
+    phone: str
+
+class ResetPassword(BaseModel):
+    phone: str
+    otp: str
+    new_password: str
+    re_new_password: str
+
+    @model_validator(mode='after')
+    def check_passwords_match(self) -> 'ResetPassword':
+        if self.new_password != self.re_new_password:
+            raise ValueError('Passwords do not match')
+        return self
