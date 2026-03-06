@@ -1,8 +1,9 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from decimal import Decimal
 from datetime import datetime
 
+# Responses
 class WalletResponse(BaseModel):
     balance: Decimal
     total_won: Decimal
@@ -14,15 +15,36 @@ class WalletResponse(BaseModel):
 class TransactionResponse(BaseModel):
     id: int
     amount: Decimal
-    type: str
-    status: str
-    reference: Optional[str]
+    type: str       # Deposit, Withdraw, Entry Fee, Winning Payout
+    status: str     # Completed, Pending, Rejected
+    reference: Optional[str] # Stores the Moncash/Natcash number
     created_at: datetime
 
     class Config:
         from_attributes = True
 
-class WithdrawalRequest(BaseModel):
+# Requests 
+class DepositRequest(BaseModel):
     amount: Decimal
-    method: str  # "MonCash" or "NatCash"
-    account_number: str
+    method: str          # "Moncash" or "Natcash"
+    phone_number: str    # The number entered in the UI
+
+class WithdrawRequest(BaseModel):
+    amount: Decimal
+    method: str          # "Moncash" or "Natcash"
+    phone_number: str
+
+class AdminTransactionUser(BaseModel):
+    full_name: Optional[str]
+    phone: str
+
+class AdminTransactionResponse(BaseModel):
+    id: int
+    amount: Decimal
+    status: str
+    created_at: datetime
+    reference: Optional[str]
+    user: AdminTransactionUser # Nested user info
+
+    class Config:
+        from_attributes = True
