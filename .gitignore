@@ -67,3 +67,6 @@ static/
 
 # Ignore uploaded images
 uploads/
+
+# Ignore Alembic migration versions
+alembic/versions/*

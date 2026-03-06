@@ -1,12 +1,33 @@
+import subprocess
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.api.v1.api import api_router
 from app.core.config import settings
 
+# Run migrations using subprocess
+def run_migrations():
+    """Run alembic upgrade head as a separate process"""
+    try:
+        print("Checking for database migrations...")
+        # This is equivalent to typing 'alembic upgrade head' in the terminal
+        subprocess.run(["alembic", "upgrade", "head"], check=True)
+        print("Database migrations applied successfully.")
+    except Exception as e:
+        print(f"Error applying migrations: {e}")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Run migrations before the app starts
+    run_migrations()
+    yield
+
 app = FastAPI(
-    title="MatchKash API",
+    title=settings.PROJECT_NAME,
     description="Backend for Sports Prediction App",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan 
 )
 
 # CORS (Allow Flutter App)
@@ -18,7 +39,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(api_router, prefix="/api/v1")
+app.include_router(api_router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 def root():

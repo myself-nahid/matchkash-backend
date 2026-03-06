@@ -7,3 +7,6 @@ passlib[bcrypt]
 python-jose[cryptography]
 python-multipart
 uvicorn
+aiosqlite
+alembic
+argon2-cffi

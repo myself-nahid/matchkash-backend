@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from typing import Optional
 
 class UserBase(BaseModel):
@@ -7,6 +7,16 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    re_password: str  
+
+    # Pydantic v2 Validator
+    @model_validator(mode='after')
+    def check_passwords_match(self) -> 'UserCreate':
+        pw1 = self.password
+        pw2 = self.re_password
+        if pw1 is not None and pw2 is not None and pw1 != pw2:
+            raise ValueError('Passwords do not match')
+        return self
 
 class UserLogin(BaseModel):
     phone: str
