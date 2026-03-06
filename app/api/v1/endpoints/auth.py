@@ -5,7 +5,7 @@ from sqlalchemy import select
 from app.api.deps import get_db
 from app.core.security import create_access_token, get_password_hash, verify_password
 from app.models.user import User, Wallet
-from app.schemas.user import UserCreate, UserLogin, Token, OTPVerify
+from app.schemas.user import UserCreate, UserLogin, Token, OTPVerify, ForgotPassword, ResetPassword
 
 router = APIRouter()
 
@@ -170,3 +170,111 @@ async def login(user_in: UserLogin, db: AsyncSession = Depends(get_db)):
 
     access_token = create_access_token(subject=user.id)
     return {"access_token": access_token, "token_type": "bearer"}
+
+# For Twilio
+# @router.post("/forgot-password")
+# async def forgot_password(data: ForgotPassword, db: AsyncSession = Depends(get_db)):
+#     """Step 1: Request an OTP to reset the password"""
+    
+#     # 1. Check if user exists
+#     result = await db.execute(select(User).where(User.phone == data.phone))
+#     user = result.scalars().first()
+
+#     if not user:
+#         raise HTTPException(status_code=404, detail="User with this phone number not found")
+
+#     # 2. Generate new OTP and save to database
+#     otp = generate_otp()
+#     user.otp_code = otp
+#     await db.commit()
+
+#     # 3. Send SMS (Using your Twilio setup)
+#     sms_sent = send_sms_otp(user.phone, otp)
+    
+#     if not sms_sent:
+#         raise HTTPException(
+#             status_code=500, 
+#             detail="Failed to send SMS. Please try again later."
+#         )
+
+#     return {"message": "OTP sent successfully. Please check your phone."}
+
+
+# @router.post("/reset-password")
+# async def reset_password(data: ResetPassword, db: AsyncSession = Depends(get_db)):
+#     """Step 2 & 3: Verify OTP and save the new password"""
+    
+#     # 1. Find the user
+#     result = await db.execute(select(User).where(User.phone == data.phone))
+#     user = result.scalars().first()
+
+#     if not user:
+#         raise HTTPException(status_code=404, detail="User not found")
+
+#     # 2. Verify OTP
+#     if not user.otp_code or user.otp_code != data.otp:
+#         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+
+#     # 3. Hash the new password and update the user
+#     user.hashed_password = get_password_hash(data.new_password)
+    
+#     # 4. Clear the OTP so it can't be used again
+#     user.otp_code = None
+    
+#     await db.commit()
+
+#     return {"message": "Password has been reset successfully. You can now log in."}
+
+@router.post("/forgot-password")
+async def forgot_password(data: ForgotPassword, db: AsyncSession = Depends(get_db)):
+    """Step 1: Request an OTP to reset the password (MOCK)"""
+    
+    # 1. Check if user exists
+    result = await db.execute(select(User).where(User.phone == data.phone))
+    user = result.scalars().first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User with this phone number not found")
+
+    # 2. Generate new OTP and save to database
+    otp = str(random.randint(100000, 999999))
+    user.otp_code = otp
+    await db.commit()
+
+    # 3. MOCK SMS - Print to terminal instead of sending real SMS
+    print("\n" + "="*50)
+    print(f"[MOCK SMS] Password Reset Request")
+    print(f"To Phone: {data.phone}")
+    print(f"Your OTP Code is: {otp}")
+    print("="*50 + "\n")
+
+    return {
+        "message": "OTP sent successfully. Please check your phone (or terminal).",
+        "mock_otp_hint": otp  # You can remove this line in production!
+    }
+
+
+@router.post("/reset-password")
+async def reset_password(data: ResetPassword, db: AsyncSession = Depends(get_db)):
+    """Step 2 & 3: Verify OTP and save the new password"""
+    
+    # 1. Find the user
+    result = await db.execute(select(User).where(User.phone == data.phone))
+    user = result.scalars().first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # 2. Verify OTP
+    if not user.otp_code or user.otp_code != data.otp:
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+
+    # 3. Hash the new password and update the user
+    user.hashed_password = get_password_hash(data.new_password)
+    
+    # 4. Clear the OTP so it can't be used again
+    user.otp_code = None
+    
+    await db.commit()
+
+    return {"message": "Password has been reset successfully. You can now log in."}
