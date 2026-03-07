@@ -39,6 +39,9 @@ class OTPVerify(BaseModel):
     phone: str
     otp: str
 
+class ResendOTP(BaseModel):
+    phone: str
+
 class ForgotPassword(BaseModel):
     phone: str
 

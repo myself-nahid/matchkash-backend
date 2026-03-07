@@ -5,7 +5,7 @@ from sqlalchemy import select
 from app.api.deps import get_db
 from app.core.security import create_access_token, get_password_hash, verify_password
 from app.models.user import User, Wallet
-from app.schemas.user import UserCreate, UserLogin, Token, OTPVerify, ForgotPassword, ResetPassword
+from app.schemas.user import UserCreate, UserLogin, Token, OTPVerify, ForgotPassword, ResetPassword, ResendOTP
 
 router = APIRouter()
 
@@ -156,6 +156,42 @@ async def verify_otp(data: OTPVerify, db: AsyncSession = Depends(get_db)):
     # Give them the access token (Auto-Login)
     access_token = create_access_token(subject=user.id)
     return {"access_token": access_token, "token_type": "bearer"}
+
+@router.post("/resend-otp")
+async def resend_otp(data: ResendOTP, db: AsyncSession = Depends(get_db)):
+    """Generate a new OTP and resend it to the user"""
+    
+    # 1. Find the user by phone
+    result = await db.execute(select(User).where(User.phone == data.phone))
+    user = result.scalars().first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # 2. Generate a NEW OTP
+    new_otp = generate_otp() # Assuming you have the generate_otp() function from earlier
+    
+    # 3. Update the database with the new OTP
+    user.otp_code = new_otp
+    db.add(user)
+    await db.commit()
+
+    # 4. Send the SMS (Using Mock for now, replace with Twilio later)
+    print("\n" + "="*50)
+    print(f"📲 [MOCK SMS] RESENDING OTP")
+    print(f"To Phone: {data.phone}")
+    print(f"Your NEW OTP Code is: {new_otp}")
+    print("="*50 + "\n")
+
+    # If using real Twilio:
+    # sms_sent = send_sms_otp(user.phone, new_otp)
+    # if not sms_sent:
+    #     raise HTTPException(status_code=500, detail="Failed to send SMS")
+
+    return {
+        "message": "A new OTP has been sent to your phone number.",
+        "mock_otp_hint": new_otp 
+    }
 
 @router.post("/login", response_model=Token)
 async def login(user_in: UserLogin, db: AsyncSession = Depends(get_db)):
