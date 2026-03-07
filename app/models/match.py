@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, DECIMAL, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, DateTime, DECIMAL, ForeignKey, Enum, func
 from sqlalchemy.orm import relationship
 from app.db.base import Base
 import enum
@@ -39,6 +39,7 @@ class Prediction(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     match_id = Column(Integer, ForeignKey("matches.id"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # User's prediction
     predicted_winner = Column(String) # "A", "B", or "Draw"

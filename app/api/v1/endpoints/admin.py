@@ -14,15 +14,70 @@ from app.models.user import User, Wallet
 from app.models.transaction import Transaction
 from app.schemas.match import AdminMatchCreate, AdminMatchUpdate, AdminResultEntry, MatchResponse, LeaderboardResponse, LeaderboardEntry
 from app.schemas.wallet import AdminTransactionResponse
+from app.schemas.admin import DashboardStatsResponse
 from app.services.contest_engine import ContestEngine
 from sqlalchemy.orm import joinedload
 from typing import List, Optional
 from decimal import Decimal
 from app.services.contest_engine import ContestEngine
 from sqlalchemy import func
+from datetime import datetime, date
+from sqlalchemy import extract
 
 
 router = APIRouter()
+
+@router.get("/dashboard", response_model=DashboardStatsResponse)
+async def get_dashboard_stats(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin_user)
+):
+    """Gathers all statistics for the main admin dashboard page."""
+    
+    today = date.today()
+    current_year = today.year
+
+    # --- Card Calculations ---
+    total_users_q = select(func.count(User.id))
+    active_matches_q = select(func.count(Match.id)).where(Match.status.in_(['upcoming', 'live']))
+    pending_withdrawals_q = select(func.count(Transaction.id)).where(Transaction.type == "Withdraw", Transaction.status == "Pending")
+    active_users_today_q = select(func.count(func.distinct(Prediction.user_id))).where(func.date(Prediction.created_at) == today)
+
+    # Financial calculations from predictions
+    financial_q = select(
+        func.sum(Match.entry_fee).label("total_collection"),
+        func.sum(Match.entry_fee * (Match.platform_fee_percent / 100)).label("total_revenue")
+    ).join(Prediction, Match.id == Prediction.match_id)
+
+    # Execute all queries
+    total_users = await db.scalar(total_users_q)
+    active_matches = await db.scalar(active_matches_q)
+    pending_withdrawals = await db.scalar(pending_withdrawals_q)
+    active_users_today = await db.scalar(active_users_today_q)
+    financial_res = (await db.execute(financial_q)).first()
+
+    # --- Monthly Revenue Chart Calculation ---
+    monthly_revenue_data = []
+    for month in range(1, 13):
+        monthly_revenue_q = select(func.sum(Match.entry_fee * (Match.platform_fee_percent / 100))).\
+            join(Prediction, Match.id == Prediction.match_id).\
+            where(
+                extract('year', Prediction.created_at) == current_year,
+                extract('month', Prediction.created_at) == month
+            )
+        
+        monthly_revenue = await db.scalar(monthly_revenue_q)
+        monthly_revenue_data.append(monthly_revenue or Decimal('0.0'))
+
+    return DashboardStatsResponse(
+        total_users=total_users or 0,
+        active_matches=active_matches or 0,
+        pending_withdrawals=pending_withdrawals or 0,
+        active_users_today=active_users_today or 0,
+        total_entry_collection=financial_res.total_collection if financial_res else Decimal('0.0'),
+        total_platform_revenue=financial_res.total_revenue if financial_res else Decimal('0.0'),
+        monthly_revenue=monthly_revenue_data
+    )
 
 # --- Match Management ---
 
