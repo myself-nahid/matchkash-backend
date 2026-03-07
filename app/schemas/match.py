@@ -17,8 +17,8 @@ class MatchResponse(BaseModel):
     league_name: str
     team_a: str
     team_b: str
-    team_a_logo: Optional[str] = None
-    team_b_logo: Optional[str] = None
+    # team_a_logo: Optional[str] = None
+    # team_b_logo: Optional[str] = None
     start_time: datetime
     status: str
     entry_fee: Decimal
@@ -27,6 +27,63 @@ class MatchResponse(BaseModel):
     prize_pool: Decimal = 0.00
     participants_count: int = 0
     
+    class Config:
+        from_attributes = True
+
+# --- For "All Predictions" Screen (Response) ---
+class MyPredictionResponse(BaseModel):
+    id: int
+    match_id: int
+    league_name: str
+    team_a: str
+    team_b: str
+    match_date: datetime
+    
+    # User's Input
+    predicted_winner: str
+    predicted_score_a: int
+    predicted_score_b: int
+    
+    # Results
+    actual_score_a: Optional[int]
+    actual_score_b: Optional[int]
+    status: str  # WON, LOST, PENDING
+    rank: Optional[int]
+    prize_amount: Decimal # e.g. +200.00 or 0.00
+
+    class Config:
+        from_attributes = True
+
+class LeagueResponse(BaseModel):
+    name: str
+
+# --- For Dropdowns ---
+class LeagueListResponse(BaseModel):
+    leagues: List[str]
+
+# --- Response: My Predictions Screen ---
+class MyPredictionCard(BaseModel):
+    match_id: int
+    league_name: str
+    team_a: str
+    team_b: str
+    match_date: datetime
+    
+    # Prediction details
+    predicted_team: str  # "Team A", "Team B", "Draw"
+    predicted_score_a: int
+    predicted_score_b: int
+    
+    # Results (Optional if match isn't over)
+    actual_score_a: Optional[int]
+    actual_score_b: Optional[int]
+    
+    # Status & Stats
+    status: str          # "PENDING", "WON", "LOST"
+    rank_text: str       # E.g., "3/200" or "-"
+    pnl_amount: Decimal  # E.g., +200.00 or -20.00
+    pnl_color: str       # "green", "red", "yellow" (Helper for UI)
+
     class Config:
         from_attributes = True
 
