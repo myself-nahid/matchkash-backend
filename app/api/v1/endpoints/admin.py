@@ -14,7 +14,7 @@ from app.models.user import User, Wallet
 from app.models.transaction import Transaction
 from app.schemas.match import AdminMatchCreate, AdminMatchUpdate, AdminResultEntry, MatchResponse, LeaderboardResponse, LeaderboardEntry
 from app.schemas.wallet import AdminTransactionResponse
-from app.schemas.admin import DashboardStatsResponse, AdminUserListResponse, AdminUserDetailResponse, AdminWalletDetail, AdminTransactionDetail, AdminPredictionDetail, AdminUserWalletPopup, AdminUserTransactionPopup, AdminUserPredictionPopup, AdminUserListResponse, RevenueStatsResponse
+from app.schemas.admin import DashboardStatsResponse, AdminUserListResponse, AdminUserDetailResponse, AdminWalletDetail, AdminTransactionDetail, AdminPredictionDetail, AdminUserWalletPopup, AdminUserTransactionPopup, AdminUserPredictionPopup, AdminUserListResponse, RevenueStatsResponse, AdminAccountResponse, AdminAccountUpdate, AdminLanguageUpdate, AdminSecurityUpdate, SystemPolicySchema
 from app.services.contest_engine import ContestEngine
 from sqlalchemy.orm import joinedload
 from typing import List, Optional
@@ -23,6 +23,8 @@ from app.services.contest_engine import ContestEngine
 from sqlalchemy import func
 from datetime import datetime, date, timedelta
 from sqlalchemy import extract
+from app.core.security import verify_password, get_password_hash
+from app.models.setting import SystemSetting
 
 
 router = APIRouter()
@@ -686,3 +688,95 @@ async def get_revenue_details(
         weekly_revenue=[round(val, 2) for val in weekly_chart],
         daily_revenue=[round(val, 2) for val in daily_chart]
     )
+
+# ADMIN SETTINGS SYSTEM 
+@router.get("/settings/account", response_model=AdminAccountResponse)
+async def get_admin_account_info(admin: User = Depends(get_current_admin_user)):
+    """Get the admin's email, phone, and address"""
+    return admin
+
+@router.put("/settings/account", response_model=AdminAccountResponse)
+async def update_admin_account_info(
+    data: AdminAccountUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin_user)
+):
+    """Update the admin's email, phone, and address"""
+    if data.email is not None:
+        admin.email = data.email
+    if data.phone is not None:
+        admin.phone = data.phone
+    if data.address is not None:
+        admin.address = data.address
+
+    db.add(admin)
+    await db.commit()
+    await db.refresh(admin)
+    return admin
+
+@router.put("/settings/security")
+async def update_admin_security(
+    data: AdminSecurityUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin_user)
+):
+    """Update the admin password"""
+    if not verify_password(data.current_password, admin.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    admin.hashed_password = get_password_hash(data.new_password)
+    db.add(admin)
+    await db.commit()
+    return {"message": "Password updated successfully"}
+
+@router.put("/settings/language")
+async def update_admin_language(
+    data: AdminLanguageUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin_user)
+):
+    """Update preferred language"""
+    admin.language = data.language
+    db.add(admin)
+    await db.commit()
+    return {"message": "Language updated successfully", "language": admin.language}
+
+
+# --- Global App Policies (Terms & Rules) ---
+
+@router.get("/settings/policies", response_model=SystemPolicySchema)
+async def get_system_policies(db: AsyncSession = Depends(get_db)):
+    """Fetch global Terms & Conditions and Contest Rules. (Accessible to both users and admins)"""
+    setting = await db.scalar(select(SystemSetting).where(SystemSetting.id == 1))
+    
+    if not setting:
+        # Create default if it doesn't exist
+        setting = SystemSetting(id=1)
+        db.add(setting)
+        await db.commit()
+        await db.refresh(setting)
+        
+    return setting
+
+@router.put("/settings/policies", response_model=SystemPolicySchema)
+async def update_system_policies(
+    data: SystemPolicySchema,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin_user)
+):
+    """Admin only: Update Terms & Conditions or Contest Rules via the popup modals"""
+    setting = await db.scalar(select(SystemSetting).where(SystemSetting.id == 1))
+    
+    if not setting:
+        setting = SystemSetting(id=1)
+
+    if data.terms_and_conditions is not None:
+        setting.terms_and_conditions = data.terms_and_conditions
+    if data.contest_rules is not None:
+        setting.contest_rules = data.contest_rules
+
+    db.add(setting)
+    await db.commit()
+    await db.refresh(setting)
+    
+    return setting

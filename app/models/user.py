@@ -20,7 +20,12 @@ class User(Base):
     otp_code = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     profile_photo = Column(String, nullable=True)
-    
+
+    # Admin/User Settings
+    email = Column(String, unique=True, nullable=True)
+    address = Column(String, nullable=True)
+    language = Column(String, default="English")
+
     # Wallet (One-to-One)
     wallet = relationship("Wallet", back_populates="user", uselist=False)
     predictions = relationship("Prediction", back_populates="user")

@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from typing import List, Optional
 from decimal import Decimal
 from datetime import datetime
@@ -111,6 +111,44 @@ class RevenueStatsResponse(BaseModel):
     monthly_revenue: List[Decimal]  # 12 items (Jan - Dec)
     weekly_revenue: List[Decimal]   # 5 items (Week 1 - Week 5 of current month)
     daily_revenue: List[Decimal]    # 7 items (Sun - Sat of current week)
+
+    class Config:
+        from_attributes = True
+
+# --- Settings: Account Info ---
+class AdminAccountUpdate(BaseModel):
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+
+class AdminAccountResponse(BaseModel):
+    email: Optional[str]
+    phone: str
+    address: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+# --- Settings: Security ---
+class AdminSecurityUpdate(BaseModel):
+    current_password: str
+    new_password: str
+    confirm_new_password: str
+
+    @model_validator(mode='after')
+    def check_passwords_match(self) -> 'AdminSecurityUpdate':
+        if self.new_password != self.confirm_new_password:
+            raise ValueError('New passwords do not match')
+        return self
+
+# --- Settings: Language ---
+class AdminLanguageUpdate(BaseModel):
+    language: str
+
+# --- Settings: Legal/Policies ---
+class SystemPolicySchema(BaseModel):
+    terms_and_conditions: Optional[str] = None
+    contest_rules: Optional[str] = None
 
     class Config:
         from_attributes = True
