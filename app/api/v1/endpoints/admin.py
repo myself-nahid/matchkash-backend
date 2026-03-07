@@ -14,14 +14,14 @@ from app.models.user import User, Wallet
 from app.models.transaction import Transaction
 from app.schemas.match import AdminMatchCreate, AdminMatchUpdate, AdminResultEntry, MatchResponse, LeaderboardResponse, LeaderboardEntry
 from app.schemas.wallet import AdminTransactionResponse
-from app.schemas.admin import DashboardStatsResponse, AdminUserListResponse, AdminUserDetailResponse, AdminWalletDetail, AdminTransactionDetail, AdminPredictionDetail, AdminUserWalletPopup, AdminUserTransactionPopup, AdminUserPredictionPopup
+from app.schemas.admin import DashboardStatsResponse, AdminUserListResponse, AdminUserDetailResponse, AdminWalletDetail, AdminTransactionDetail, AdminPredictionDetail, AdminUserWalletPopup, AdminUserTransactionPopup, AdminUserPredictionPopup, AdminUserListResponse, RevenueStatsResponse
 from app.services.contest_engine import ContestEngine
 from sqlalchemy.orm import joinedload
 from typing import List, Optional
 from decimal import Decimal
 from app.services.contest_engine import ContestEngine
 from sqlalchemy import func
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from sqlalchemy import extract
 
 
@@ -584,3 +584,105 @@ async def reject_withdrawal(
     await db.refresh(tx)
 
     return tx
+
+@router.get("/revenue", response_model=RevenueStatsResponse)
+async def get_revenue_details(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin_user)
+):
+    """Data for the dedicated Revenue Dashboard screen"""
+    
+    # 1. Define Time Boundaries
+    now = datetime.utcnow()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    month_start = today_start.replace(day=1)
+    year_start = month_start.replace(month=1)
+    
+    # Find start of the week (assuming Sunday is the start of the week like the UI chart)
+    # Python weekday(): Mon=0, Sun=6
+    days_since_sunday = (today_start.weekday() + 1) % 7
+    week_start_sunday = today_start - timedelta(days=days_since_sunday)
+
+    # 2. Get All-Time Totals
+    # Total Entry Collected and Total Platform Revenue
+    financials_query = select(
+        func.sum(Match.entry_fee).label("total_entry"),
+        func.sum(Match.entry_fee * (Match.platform_fee_percent / 100)).label("total_revenue")
+    ).select_from(Prediction).join(Match, Prediction.match_id == Match.id)
+    
+    financials_res = (await db.execute(financials_query)).first()
+    
+    total_entry_collected = financials_res.total_entry if financials_res and financials_res.total_entry else Decimal('0.0')
+    total_revenue = financials_res.total_revenue if financials_res and financials_res.total_revenue else Decimal('0.0')
+
+    # Total Prize Distributed (Sum of winnings)
+    prize_query = select(func.sum(Prediction.prize_amount)).where(Prediction.status == "WON")
+    total_prize_distributed = await db.scalar(prize_query) or Decimal('0.0')
+
+    # 3. Get Data for the Current Year to build the Charts and timeframe stats
+    this_year_query = select(
+        Prediction.created_at,
+        (Match.entry_fee * (Match.platform_fee_percent / 100)).label("revenue")
+    ).join(Match, Prediction.match_id == Match.id).where(Prediction.created_at >= year_start)
+    
+    result = await db.execute(this_year_query)
+    this_year_records = result.all()
+
+    # Initialize Chart Arrays
+    monthly_chart = [Decimal('0.0')] * 12
+    weekly_chart =[Decimal('0.0')] * 5
+    daily_chart = [Decimal('0.0')] * 7
+
+    # Initialize Timeframe Totals
+    todays_rev = Decimal('0.0')
+    weeks_rev = Decimal('0.0')
+    months_rev = Decimal('0.0')
+
+    # Process records
+    for row in this_year_records:
+        # Some DB drivers return datetime strings, others return objects. Ensure it's an object.
+        created_at = row.created_at
+        if isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at)
+
+        revenue = Decimal(str(row.revenue)) if row.revenue else Decimal('0.0')
+
+        # -- Monthly Chart --
+        month_idx = created_at.month - 1
+        monthly_chart[month_idx] += revenue
+
+        # -- This Month calculations --
+        if created_at >= month_start:
+            months_rev += revenue
+            
+            # Weekly Chart (Approximate: Days 1-7 = Week 1, etc.)
+            week_idx = (created_at.day - 1) // 7
+            if week_idx > 4: 
+                week_idx = 4 # Cap at week 5
+            weekly_chart[week_idx] += revenue
+
+        # -- This Week calculations --
+        if created_at >= week_start_sunday:
+            weeks_rev += revenue
+            
+            # Daily Chart (Sun = 0, Mon = 1, ... Sat = 6)
+            day_idx = (created_at.weekday() + 1) % 7
+            daily_chart[day_idx] += revenue
+
+        # -- Today calculation --
+        if created_at >= today_start:
+            todays_rev += revenue
+
+    # 4. Return formatted data
+    return RevenueStatsResponse(
+        todays_revenue=round(todays_rev, 2),
+        this_weeks_revenue=round(weeks_rev, 2),
+        this_months_revenue=round(months_rev, 2),
+        total_revenue=round(total_revenue, 2),
+        total_entry_collected=round(total_entry_collected, 2),
+        total_prize_distributed=round(total_prize_distributed, 2),
+        
+        monthly_revenue=[round(val, 2) for val in monthly_chart],
+        weekly_revenue=[round(val, 2) for val in weekly_chart],
+        daily_revenue=[round(val, 2) for val in daily_chart]
+    )

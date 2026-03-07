@@ -96,3 +96,21 @@ class AdminUserPredictionPopup(BaseModel):
     team_a: str
     team_b: str
     prediction: str       # E.g., "Team A" or "Draw"
+
+# Revenue Dashboard Schema 
+class RevenueStatsResponse(BaseModel):
+    # Summary Cards
+    todays_revenue: Decimal
+    this_weeks_revenue: Decimal
+    this_months_revenue: Decimal
+    total_revenue: Decimal
+    total_entry_collected: Decimal
+    total_prize_distributed: Decimal
+
+    # Charts
+    monthly_revenue: List[Decimal]  # 12 items (Jan - Dec)
+    weekly_revenue: List[Decimal]   # 5 items (Week 1 - Week 5 of current month)
+    daily_revenue: List[Decimal]    # 7 items (Sun - Sat of current week)
+
+    class Config:
+        from_attributes = True
