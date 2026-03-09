@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
-from app.models.user import User
+from app.models.user import User, TokenBlocklist 
 from app.schemas.user import Token
 
 # Point to the login endpoint

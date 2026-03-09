@@ -4,8 +4,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.api.deps import get_db
 from app.core.security import create_access_token, get_password_hash, verify_password
-from app.models.user import User, Wallet
+from app.models.user import User, Wallet, TokenBlocklist
 from app.schemas.user import UserCreate, UserLogin, Token, OTPVerify, ForgotPassword, ResetPassword, ResendOTP
+from app.api.deps import oauth2_scheme
 
 router = APIRouter()
 
@@ -314,3 +315,23 @@ async def reset_password(data: ResetPassword, db: AsyncSession = Depends(get_db)
     await db.commit()
 
     return {"message": "Password has been reset successfully. You can now log in."}
+
+@router.post("/logout")
+async def logout(
+    token: str = Depends(oauth2_scheme), 
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Logs the user out by blacklisting their current JWT token.
+    Once blacklisted, this exact token can never be used again.
+    """
+    # Check if it's already blacklisted to prevent duplicate errors
+    is_blacklisted = await db.scalar(select(TokenBlocklist).where(TokenBlocklist.token == token))
+    
+    if not is_blacklisted:
+        # Add the token to the blocklist
+        blacklisted_token = TokenBlocklist(token=token)
+        db.add(blacklisted_token)
+        await db.commit()
+
+    return {"message": "Successfully logged out"}

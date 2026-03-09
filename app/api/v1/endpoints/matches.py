@@ -174,7 +174,7 @@ async def get_my_predictions(
     """
     query = (
         select(Prediction)
-        .options(func.joinedload(Prediction.match)) # Eager load match details
+        .options(joinedload(Prediction.match)) # Eager load match details
         .where(Prediction.user_id == user.id)
         .order_by(Prediction.created_at.desc())
     )
