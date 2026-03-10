@@ -300,6 +300,12 @@ async def admin_enter_result(
         
     match.score_a = result_in.score_a
     match.score_b = result_in.score_b
+    winning_team = "Draw"
+    if result_in.score_a > result_in.score_b:
+        winning_team = "A"
+    elif result_in.score_b > result_in.score_a:
+        winning_team = "B"
+    match.winning_team = winning_team
     match.status = MatchStatus.COMPLETED
     
     db.add(match)

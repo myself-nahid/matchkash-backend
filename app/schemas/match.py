@@ -137,3 +137,4 @@ class AdminMatchUpdate(BaseModel):
 class AdminResultEntry(BaseModel):
     score_a: int
     score_b: int
+    winning_team: str # "A", "B", or "Draw"
