@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Form, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Form, UploadFile, File, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
@@ -234,7 +234,7 @@ async def admin_update_match(
     match_time_start: datetime = Form(...),
     team_a: str = Form(...),
     team_b: str = Form(...),
-    platform_fee: float = Form(...),
+    platform_fee_percent: float = Form(...),
     promotional_amount: float = Form(0.0),
     feature_match: int = Form(0),
     entry_fee: float = Form(...),
@@ -258,7 +258,7 @@ async def admin_update_match(
     match.match_date = match_date
     match.match_time_start = match_time_start
     match.entry_fee = entry_fee
-    match.platform_fee_percent = platform_fee
+    match.platform_fee_percent = platform_fee_percent
     match.promotional_amount = promotional_amount
     match.feature_match = feature_match
     match.image_url = image_url
@@ -317,6 +317,36 @@ async def admin_enter_result(
     
     return {"message": "Result updated, prize calculation queued."}
 
+@router.patch("/matches/{match_id}/toggle-feature", response_model=MatchResponse)
+async def admin_toggle_feature_match(
+    match_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin_user)
+):
+    """Admin: Toggle the feature_match status (0 or 1) for the dashboard switch"""
+    
+    # 1. Fetch the match from the database
+    match = await db.get(Match, match_id)
+    if not match:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Match not found"
+        )
+
+    # 2. Toggle the value
+    # Since your database schema defined feature_match as an INTEGER
+    # We switch it: If it's 1 (True), make it 0 (False). If it's 0, make it 1.
+    if match.feature_match == 1:
+        match.feature_match = 0
+    else:
+        match.feature_match = 1
+
+    # 3. Save to database
+    db.add(match)
+    await db.commit()
+    await db.refresh(match)
+    
+    return match
 
 @router.get("/matches/{match_id}/leaderboard", response_model=LeaderboardResponse)
 async def admin_get_leaderboard(
