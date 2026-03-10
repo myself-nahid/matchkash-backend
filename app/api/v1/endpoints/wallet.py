@@ -6,6 +6,7 @@ from app.api.deps import get_db, get_current_user
 from app.models.user import User, Wallet
 from app.models.transaction import Transaction
 from app.schemas.wallet import WalletResponse, TransactionResponse, DepositRequest, WithdrawRequest
+from app.models.user import Notification
 from decimal import Decimal
 
 router = APIRouter()
@@ -68,13 +69,46 @@ async def request_deposit(
     
     return {"message": "Deposit successful", "new_balance": wallet.balance}
 
+# @router.post("/withdraw")
+# async def request_withdrawal(
+#     request: WithdrawRequest,
+#     user: User = Depends(get_current_user),
+#     db: AsyncSession = Depends(get_db)
+# ):
+#     """Submit a withdrawal request (Goes to Pending status)"""
+#     if request.amount <= 0:
+#         raise HTTPException(status_code=400, detail="Amount must be greater than zero")
+
+#     wallet = await db.scalar(select(Wallet).where(Wallet.user_id == user.id))
+    
+#     if wallet.balance < request.amount:
+#         raise HTTPException(status_code=400, detail="Insufficient balance")
+
+#     # 1. Deduct immediately to prevent user from spending it while pending
+#     wallet.balance -= request.amount
+    
+#     # 2. Record Transaction as 'Pending'
+#     tx = Transaction(
+#         user_id=user.id,
+#         amount=-request.amount, # Negative because it's a deduction
+#         type="Withdraw",
+#         status="Pending",
+#         reference=f"{request.method} - {request.phone_number}"
+#     )
+    
+#     db.add(wallet)
+#     db.add(tx)
+#     await db.commit()
+    
+#     return {"message": "Withdrawal request submitted successfully. Waiting for admin approval."}
+
 @router.post("/withdraw")
 async def request_withdrawal(
     request: WithdrawRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Submit a withdrawal request (Goes to Pending status)"""
+    """Submit a withdrawal request and Notify Admins"""
     if request.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be greater than zero")
 
@@ -83,20 +117,34 @@ async def request_withdrawal(
     if wallet.balance < request.amount:
         raise HTTPException(status_code=400, detail="Insufficient balance")
 
-    # 1. Deduct immediately to prevent user from spending it while pending
+    # 1. Deduct immediately
     wallet.balance -= request.amount
     
-    # 2. Record Transaction as 'Pending'
+    # 2. Record Transaction
     tx = Transaction(
         user_id=user.id,
-        amount=-request.amount, # Negative because it's a deduction
+        amount=-request.amount,
         type="Withdraw",
         status="Pending",
-        reference=f"{request.method} - {request.phone_number}"
+        reference=f"{request.method} - {request.phone_number}" # Saves "Moncash - 1234"
     )
     
     db.add(wallet)
     db.add(tx)
+    await db.flush() # Flush to generate the tx.id without committing yet
+
+    # 3. Create a Notification for ALL Admins
+    admins = await db.scalars(select(User).where(User.role == "admin"))
+    for admin in admins:
+        notification = Notification(
+            user_id=admin.id,
+            title="New withdrawal request",
+            message=f"{user.full_name or 'A user'} wants to withdraw",
+            type="WITHDRAWAL_REQUEST",
+            reference_id=tx.id # Links the notification to this exact transaction!
+        )
+        db.add(notification)
+
     await db.commit()
     
     return {"message": "Withdrawal request submitted successfully. Waiting for admin approval."}

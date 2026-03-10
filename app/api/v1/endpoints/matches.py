@@ -259,7 +259,7 @@ async def get_match_leaderboard(
 
     return LeaderboardResponse(
         match_id=match.id,
-        sport=match.sport,
+        sport=match.sport_name,
         league_name=match.league_name,
         team_a=match.team_a,
         team_b=match.team_b,

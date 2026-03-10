@@ -152,3 +152,27 @@ class SystemPolicySchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+# --- Notification Schemas ---
+class NotificationResponse(BaseModel):
+    id: int
+    title: str
+    message: str
+    type: str
+    reference_id: Optional[int]
+    is_read: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# --- Withdrawal Modal Schema (For the 'View' button) ---
+class AdminWithdrawalModalDetail(BaseModel):
+    transaction_id: int
+    user_name: str
+    method: str         # "Moncash" or "Natcash"
+    phone_number: str
+    amount: Decimal
+
+    class Config:
+        from_attributes = True

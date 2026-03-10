@@ -10,11 +10,11 @@ from app.models.transaction import Transaction
 from app.schemas.match import AdminMatchCreate, AdminMatchUpdate, AdminResultEntry, MatchResponse, LeaderboardResponse, LeaderboardEntry
 from app.schemas.wallet import AdminTransactionResponse
 from app.models.match import Match, MatchStatus, Prediction
-from app.models.user import User, Wallet
+from app.models.user import User, Wallet, Notification
 from app.models.transaction import Transaction
 from app.schemas.match import AdminMatchCreate, AdminMatchUpdate, AdminResultEntry, MatchResponse, LeaderboardResponse, LeaderboardEntry
 from app.schemas.wallet import AdminTransactionResponse
-from app.schemas.admin import DashboardStatsResponse, AdminUserListResponse, AdminUserDetailResponse, AdminWalletDetail, AdminTransactionDetail, AdminPredictionDetail, AdminUserWalletPopup, AdminUserTransactionPopup, AdminUserPredictionPopup, AdminUserListResponse, RevenueStatsResponse, AdminAccountResponse, AdminAccountUpdate, AdminLanguageUpdate, AdminSecurityUpdate, SystemPolicySchema
+from app.schemas.admin import DashboardStatsResponse, AdminUserListResponse, AdminUserDetailResponse, AdminWalletDetail, AdminTransactionDetail, AdminPredictionDetail, AdminUserWalletPopup, AdminUserTransactionPopup, AdminUserPredictionPopup, AdminUserListResponse, RevenueStatsResponse, AdminAccountResponse, AdminAccountUpdate, AdminLanguageUpdate, AdminSecurityUpdate, SystemPolicySchema, AdminWithdrawalModalDetail, NotificationResponse
 from app.services.contest_engine import ContestEngine
 from sqlalchemy.orm import joinedload
 from typing import List, Optional
@@ -912,3 +912,66 @@ async def update_system_policies(
     await db.refresh(setting)
     
     return setting
+
+@router.get("/notifications", response_model=List[NotificationResponse])
+async def get_admin_notifications(
+    is_read: Optional[bool] = None, # Allows filtering by "Unread" tab
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin_user)
+):
+    """Fetch notifications for the admin dashboard"""
+    query = select(Notification).where(Notification.user_id == admin.id).order_by(Notification.created_at.desc())
+    
+    if is_read is not None:
+        query = query.where(Notification.is_read == is_read)
+        
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.put("/notifications/{notification_id}/read")
+async def mark_notification_as_read(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin_user)
+):
+    """Marks a single notification as read when clicked"""
+    notification = await db.get(Notification, notification_id)
+    if not notification or notification.user_id != admin.id:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    
+    notification.is_read = True
+    db.add(notification)
+    await db.commit()
+    return {"message": "Notification marked as read"}
+
+
+@router.get("/withdrawals/{transaction_id}/modal", response_model=AdminWithdrawalModalDetail)
+async def get_withdrawal_modal_data(
+    transaction_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin_user)
+):
+    """
+    When Admin clicks 'View' on a notification, this fetches the exact 
+    parsed data needed for the Withdrawal Request Popup Modal.
+    """
+    tx = await db.get(Transaction, transaction_id, options=[joinedload(Transaction.user)])
+    if not tx or tx.type != "Withdraw":
+        raise HTTPException(status_code=404, detail="Withdrawal request not found")
+
+    # Parse the reference string (e.g., "Moncash - 019273748")
+    method = "Unknown"
+    phone_number = "Unknown"
+    if tx.reference and " - " in tx.reference:
+        parts = tx.reference.split(" - ")
+        method = parts[0]
+        phone_number = parts[1]
+
+    return AdminWithdrawalModalDetail(
+        transaction_id=tx.id,
+        user_name=tx.user.full_name or "Unknown User",
+        method=method,
+        phone_number=phone_number,
+        amount=abs(tx.amount) # Return as positive number for UI
+    )
