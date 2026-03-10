@@ -55,7 +55,7 @@ async def get_matches(
     query = (
         select(Match, participants_subquery.c.count)
         .outerjoin(participants_subquery, Match.id == participants_subquery.c.match_id)
-        .order_by(Match.start_time.asc())
+        .order_by(Match.match_time_start.asc())
     )
 
     # 3. Apply Filters
@@ -71,18 +71,18 @@ async def get_matches(
     # Filter: Pick a Date
     if match_date:
         # Cast datetime to date for comparison
-        query = query.where(func.date(Match.start_time) == match_date)
+        query = query.where(func.date(Match.match_time_start) == match_date)
 
     # Filter: Tabs (All, Latest, Upcoming, Completed)
     current_time = datetime.utcnow()
     
     if tab.lower() == "upcoming":
-        query = query.where(Match.status == "upcoming").where(Match.start_time > current_time)
+        query = query.where(Match.status == "upcoming").where(Match.match_time_start > current_time)
     elif tab.lower() == "completed":
         query = query.where(Match.status == "completed")
     elif tab.lower() == "latest":
         # Logic: Show Live matches first, then Upcoming matches starting very soon
-        query = query.where(Match.status.in_(["live", "upcoming"])).order_by(Match.start_time.asc())
+        query = query.where(Match.status.in_(["live", "upcoming"])).order_by(Match.match_time_start.asc())
     
     # Execute
     result = await db.execute(query)
@@ -199,7 +199,7 @@ async def get_my_predictions(
             league_name=p.match.league_name,
             team_a=p.match.team_a,
             team_b=p.match.team_b,
-            match_date=p.match.start_time,
+            match_date=p.match.match_time_start,
             predicted_winner=p.predicted_winner,
             predicted_score_a=p.predicted_score_a,
             predicted_score_b=p.predicted_score_b,
@@ -263,7 +263,7 @@ async def get_match_leaderboard(
         league_name=match.league_name,
         team_a=match.team_a,
         team_b=match.team_b,
-        start_time=match.start_time,
+        match_time_start=match.match_time_start,
         participants_count=len(leaderboard_entries),
         leaderboard=leaderboard_entries
     )

@@ -13,20 +13,23 @@ class Match(Base):
     __tablename__ = "matches"
 
     id = Column(Integer, primary_key=True, index=True)
-    sport = Column(String, default="Football") # Football or Basketball
+    match_title = Column(String, nullable=False) # E.g., "Team A vs Team B"
+    sport_name = Column(String, default="Football") # Football or Basketball
     league_name = Column(String)
+    match_date = Column(DateTime(timezone=True), nullable=False)
+    match_time_start = Column(DateTime(timezone=True), nullable=False)
     team_a = Column(String)
     team_b = Column(String)
-    team_a_logo = Column(String, nullable=True)
-    team_b_logo = Column(String, nullable=True)
-    
-    start_time = Column(DateTime(timezone=True), nullable=False)
-    status = Column(Enum(MatchStatus), default=MatchStatus.UPCOMING)
-    
+    # team_a_logo = Column(String, nullable=True)
+    # team_b_logo = Column(String, nullable=True)
+    platform_fee_percent = Column(DECIMAL(5, 2), default=10.00)
+    promotional_amount = Column(DECIMAL(10, 2), default=0.00) # For marketing/promotions
+    feature_match = Column(Integer, default=0) # 0 = No, 1 = Yes (For UI Highlighting)
     # Financial Configuration
     entry_fee = Column(DECIMAL(10, 2), default=20.00)
-    platform_fee_percent = Column(DECIMAL(5, 2), default=10.00)
-    
+    image_url = Column(String, nullable=True) # Optional field for match image/logo
+    # match_time_start = Column(DateTime(timezone=True), nullable=False)
+    status = Column(Enum(MatchStatus), default=MatchStatus.UPCOMING)
     # Results
     score_a = Column(Integer, nullable=True)
     score_b = Column(Integer, nullable=True)

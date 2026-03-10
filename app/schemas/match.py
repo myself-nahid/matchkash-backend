@@ -13,13 +13,20 @@ class PredictionCreate(BaseModel):
 # For Home Screen (Response) 
 class MatchResponse(BaseModel):
     id: int
-    sport: str
+    match_title: str
+    sport_name: str
     league_name: str
+    match_date: datetime
+    match_time_start: datetime
     team_a: str
     team_b: str
     # team_a_logo: Optional[str] = None
     # team_b_logo: Optional[str] = None
-    start_time: datetime
+    platform_fee_percent: Decimal
+    promotional_amount: Decimal
+    feature_match: int
+    entry_fee: Decimal
+    image_url: Optional[str] = None
     status: str
     entry_fee: Decimal
     
@@ -101,7 +108,7 @@ class LeaderboardResponse(BaseModel):
     league_name: str
     team_a: str
     team_b: str
-    start_time: datetime
+    match_time_start: datetime
     participants_count: int
     leaderboard: List[LeaderboardEntry]
 
@@ -114,7 +121,7 @@ class AdminMatchCreate(BaseModel):
     league_name: str
     team_a: str
     team_b: str
-    start_time: datetime
+    match_time_start: datetime
     entry_fee: Decimal = 20.00
     platform_fee: Decimal = 10.00  
 
@@ -123,7 +130,7 @@ class AdminMatchUpdate(BaseModel):
     league_name: str
     team_a: str
     team_b: str
-    start_time: datetime
+    match_time_start: datetime
     entry_fee: Decimal
     platform_fee: Decimal
 

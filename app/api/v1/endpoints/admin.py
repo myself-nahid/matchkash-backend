@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Form, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
@@ -25,7 +25,12 @@ from datetime import datetime, date, timedelta
 from sqlalchemy import extract
 from app.core.security import verify_password, get_password_hash
 from app.models.setting import SystemSetting
+import os
+import uuid 
+import shutil
 
+UPLOAD_DIR = "static/uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 router = APIRouter()
 
@@ -98,7 +103,7 @@ async def admin_get_all_matches(
     query = (
         select(Match, participants_subquery.c.count)
         .outerjoin(participants_subquery, Match.id == participants_subquery.c.match_id)
-        .order_by(Match.start_time.desc())
+        .order_by(Match.match_time_start.desc())
     )
     if status:
         query = query.where(Match.status == status.lower())
@@ -122,21 +127,96 @@ async def admin_get_all_matches(
         
     return response_list
 
+# @router.post("/matches", response_model=MatchResponse)
+# async def admin_create_match(
+#     match_in: AdminMatchCreate,
+#     db: AsyncSession = Depends(get_db),
+#     admin: User = Depends(get_current_admin_user)
+# ):
+#     """Admin: Create a new match"""
+#     new_match = Match(
+#         sport=match_in.sport,
+#         league_name=match_in.league_name,
+#         team_a=match_in.team_a,
+#         team_b=match_in.team_b,
+#         match_time_start=match_in.match_time_start,
+#         entry_fee=match_in.entry_fee,
+#         platform_fee_percent=match_in.platform_fee, # Note the name conversion
+#         status=MatchStatus.UPCOMING
+#     )
+#     db.add(new_match)
+#     await db.commit()
+#     await db.refresh(new_match)
+#     return new_match
+
+# @router.put("/matches/{match_id}", response_model=MatchResponse)
+# async def admin_update_match(
+#     match_id: int,
+#     match_in: AdminMatchUpdate,
+#     db: AsyncSession = Depends(get_db),
+#     admin: User = Depends(get_current_admin_user)
+# ):
+#     """Admin: Edit an existing match"""
+#     match = await db.get(Match, match_id)
+#     if not match:
+#         raise HTTPException(status_code=404, detail="Match not found")
+#     if match.status != MatchStatus.UPCOMING:
+#         raise HTTPException(status_code=400, detail="Cannot edit a match that is not upcoming")
+
+#     # Update fields from the request
+#     match.sport = match_in.sport
+#     match.league_name = match_in.league_name
+#     match.team_a = match_in.team_a
+#     match.team_b = match_in.team_b
+#     match.match_time_start = match_in.match_time_start
+#     match.entry_fee = match_in.entry_fee
+#     match.platform_fee_percent = match_in.platform_fee
+
+#     db.add(match)
+#     await db.commit()
+#     await db.refresh(match)
+#     return match
+
+# Use For data formate
 @router.post("/matches", response_model=MatchResponse)
 async def admin_create_match(
-    match_in: AdminMatchCreate,
+    match_title: str = Form(...),
+    sport_name: str = Form(...),
+    league_name: str = Form(...),
+    match_date: datetime = Form(...),
+    match_time_start: datetime = Form(...),
+    team_a: str = Form(...),
+    team_b: str = Form(...),
+    platform_fee_percent: float = Form(...),
+    promotional_amount: float = Form(0.0),
+    feature_match: int = Form(0),
+    entry_fee: float = Form(...),
+    image_url: UploadFile = File(None),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_current_admin_user)
 ):
-    """Admin: Create a new match"""
+    """Admin: Create a new match using Form Data"""
+    # 2. Generate a unique filename (to prevent overwriting files with the same name)
+    file_extension = image_url.filename.split(".")[-1]
+    unique_filename = f"{uuid.uuid4()}.{file_extension}"
+    file_path = os.path.join(UPLOAD_DIR, unique_filename)
+
+    # 3. Save the physical file to your server
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(image_url.file, buffer)
     new_match = Match(
-        sport=match_in.sport,
-        league_name=match_in.league_name,
-        team_a=match_in.team_a,
-        team_b=match_in.team_b,
-        start_time=match_in.start_time,
-        entry_fee=match_in.entry_fee,
-        platform_fee_percent=match_in.platform_fee, # Note the name conversion
+        match_title=match_title,
+        sport_name=sport_name,
+        league_name=league_name,
+        match_date=match_date,
+        match_time_start=match_time_start,
+        team_a=team_a,
+        team_b=team_b,
+        platform_fee_percent=platform_fee_percent,
+        promotional_amount=promotional_amount,
+        feature_match=feature_match,
+        entry_fee=entry_fee,
+        image_url=f"{UPLOAD_DIR}/{unique_filename}",
         status=MatchStatus.UPCOMING
     )
     db.add(new_match)
@@ -147,25 +227,41 @@ async def admin_create_match(
 @router.put("/matches/{match_id}", response_model=MatchResponse)
 async def admin_update_match(
     match_id: int,
-    match_in: AdminMatchUpdate,
+    match_title: str = Form(...),
+    sport_name: str = Form(...),
+    league_name: str = Form(...),
+    match_date: datetime = Form(...),
+    match_time_start: datetime = Form(...),
+    team_a: str = Form(...),
+    team_b: str = Form(...),
+    platform_fee: float = Form(...),
+    promotional_amount: float = Form(0.0),
+    feature_match: int = Form(0),
+    entry_fee: float = Form(...),
+    image_url: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_current_admin_user)
 ):
-    """Admin: Edit an existing match"""
+    """Admin: Edit an existing match using Form Data"""
     match = await db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
     if match.status != MatchStatus.UPCOMING:
         raise HTTPException(status_code=400, detail="Cannot edit a match that is not upcoming")
 
-    # Update fields from the request
-    match.sport = match_in.sport
-    match.league_name = match_in.league_name
-    match.team_a = match_in.team_a
-    match.team_b = match_in.team_b
-    match.start_time = match_in.start_time
-    match.entry_fee = match_in.entry_fee
-    match.platform_fee_percent = match_in.platform_fee
+    # Update fields from the form request
+    match.match_title = match_title
+    match.sport_name = sport_name
+    match.league_name = league_name
+    match.team_a = team_a
+    match.team_b = team_b
+    match.match_date = match_date
+    match.match_time_start = match_time_start
+    match.entry_fee = entry_fee
+    match.platform_fee_percent = platform_fee
+    match.promotional_amount = promotional_amount
+    match.feature_match = feature_match
+    match.image_url = image_url
 
     db.add(match)
     await db.commit()
@@ -258,7 +354,7 @@ async def admin_get_leaderboard(
         league_name=match.league_name,
         team_a=match.team_a,
         team_b=match.team_b,
-        start_time=match.start_time,
+        match_time_start=match.match_time_start,
         participants_count=len(leaderboard_entries),
         leaderboard=leaderboard_entries
     )
@@ -499,9 +595,9 @@ async def get_user_prediction_details(
 
         # Format Dates exactly like the UI
         # 12/12/2024
-        match_date_str = m.start_time.strftime("%d/%m/%Y") 
+        match_date_str = m.match_time_start.strftime("%d/%m/%Y") 
         # 8.00am
-        match_time_str = m.start_time.strftime("%I.%M%p").lower() 
+        match_time_str = m.match_time_start.strftime("%I.%M%p").lower() 
         if match_time_str.startswith('0'): 
             match_time_str = match_time_str[1:] # Remove leading zero (e.g., 08.00am -> 8.00am)
 
