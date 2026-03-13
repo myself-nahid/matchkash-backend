@@ -8,7 +8,8 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.user import User, TokenBlocklist 
-from app.schemas.user import Token
+# from app.schemas.user import Token
+from app.schemas.user import TokenResponse
 
 # Point to the login endpoint
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")

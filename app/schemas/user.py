@@ -31,9 +31,17 @@ class UserLogin(BaseModel):
 #     class Config:
 #         from_attributes = True
 
-class Token(BaseModel):
+# Nested model for the actual token info
+class TokenData(BaseModel):
     access_token: str
-    token_type: str
+    refresh_token: str
+    user_type: str
+
+# Standard API response model
+class TokenResponse(BaseModel):
+    status: str
+    message: str
+    data: TokenData
 
 class OTPVerify(BaseModel):
     phone: str

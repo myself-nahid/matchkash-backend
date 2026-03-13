@@ -3,9 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.api.deps import get_db
-from app.core.security import create_access_token, get_password_hash, verify_password
+from app.core.security import create_access_token, create_refresh_token, get_password_hash, verify_password
 from app.models.user import User, Wallet, TokenBlocklist
-from app.schemas.user import UserCreate, UserLogin, Token, OTPVerify, ForgotPassword, ResetPassword, ResendOTP
+from app.schemas.user import TokenResponse, UserCreate, UserLogin, OTPVerify, ForgotPassword, ResetPassword, ResendOTP
 from app.api.deps import oauth2_scheme
 
 router = APIRouter()
@@ -133,7 +133,7 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
 # #     }
 
 
-@router.post("/verify-otp", response_model=Token)
+@router.post("/verify-otp", response_model=TokenResponse)
 async def verify_otp(data: OTPVerify, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.phone == data.phone))
     user = result.scalars().first()
@@ -194,7 +194,7 @@ async def resend_otp(data: ResendOTP, db: AsyncSession = Depends(get_db)):
         "mock_otp_hint": new_otp 
     }
 
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=TokenResponse)
 async def login(user_in: UserLogin, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.phone == user_in.phone))
     user = result.scalars().first()
@@ -206,7 +206,15 @@ async def login(user_in: UserLogin, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Account is not verified. Please verify your OTP.")
 
     access_token = create_access_token(subject=user.id)
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "status": "success",
+        "message": "Login successful",
+        "data": {
+            "access_token": access_token,
+            "user_type": user.role,
+            "refresh_token": create_refresh_token(subject=user.id)
+        }
+    }
 
 # For Twilio
 # @router.post("/forgot-password")
