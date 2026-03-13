@@ -5,7 +5,7 @@ from sqlalchemy import select
 from app.api.deps import get_db
 from app.core.security import create_access_token, create_refresh_token, get_password_hash, verify_password
 from app.models.user import User, Wallet, TokenBlocklist
-from app.schemas.user import TokenResponse, UserCreate, UserLogin, OTPVerify, ForgotPassword, ResetPassword, ResendOTP, TokenRefreshRequest
+from app.schemas.user import TokenResponse, UserCreate, UserLogin, OTPVerify, ForgotPassword, ResetPassword, ResendOTP, TokenRefreshRequest, forgot_password_otp_response, verifyOTPResponse
 from app.api.deps import oauth2_scheme
 from jose import jwt, JWTError
 from app.core.config import settings
@@ -135,7 +135,7 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
 # #     }
 
 
-@router.post("/verify-otp", response_model=TokenResponse)
+@router.post("/verify-otp", response_model=verifyOTPResponse)
 async def verify_otp(data: OTPVerify, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.phone == data.phone))
     user = result.scalars().first()
@@ -158,7 +158,7 @@ async def verify_otp(data: OTPVerify, db: AsyncSession = Depends(get_db)):
 
     # Give them the access token (Auto-Login)
     access_token = create_access_token(subject=user.id)
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"status": "success", "message": "OTP verified successfully"}
 
 @router.post("/resend-otp")
 async def resend_otp(data: ResendOTP, db: AsyncSession = Depends(get_db)):
@@ -350,31 +350,65 @@ async def forgot_password(data: ForgotPassword, db: AsyncSession = Depends(get_d
         "mock_otp_hint": otp  # You can remove this line in production!
     }
 
+@router.post("/forgot-password-verify-otp")
+async def forgot_password_verify_otp(data: OTPVerify, db: AsyncSession = Depends(get_db)):
+    """Step 2: Just verifies if the OTP is correct so the app can move to the New Password screen"""
+    result = await db.execute(select(User).where(User.phone == data.phone))
+    user = result.scalars().first()
+
+    # Verify OTP
+    if not user or user.otp_code != data.otp:
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+    return {"status": "success", "message": "OTP verified successfully. Proceed to reset password."}
+
 
 @router.post("/reset-password")
 async def reset_password(data: ResetPassword, db: AsyncSession = Depends(get_db)):
-    """Step 2 & 3: Verify OTP and save the new password"""
-    
-    # 1. Find the user
+    """Step 3: Verifies OTP one last time and changes the password"""
     result = await db.execute(select(User).where(User.phone == data.phone))
     user = result.scalars().first()
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # 2. Verify OTP
+    # Verify OTP again to ensure security
     if not user.otp_code or user.otp_code != data.otp:
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
 
-    # 3. Hash the new password and update the user
+    # Hash the new password and update the user
     user.hashed_password = get_password_hash(data.new_password)
     
-    # 4. Clear the OTP so it can't be used again
+    # NOW we clear the OTP so it can't be used again
     user.otp_code = None
     
     await db.commit()
 
-    return {"message": "Password has been reset successfully. You can now log in."}
+    return {"status": "success", "message": "Password has been reset successfully. You can now log in."}
+
+# @router.post("/reset-password-verify-otp", response_model=TokenResponse)
+# async def verify_otp(data: OTPVerify, db: AsyncSession = Depends(get_db)):
+#     result = await db.execute(select(User).where(User.phone == data.phone))
+#     user = result.scalars().first()
+
+#     # Verify OTP
+#     if not user or user.otp_code != data.otp:
+#         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+
+#     # Success! Activate user and clear OTP
+#     user.is_active = True
+#     user.otp_code = None
+
+#     # Check if Wallet exists, if not, create it
+#     wallet_result = await db.execute(select(Wallet).where(Wallet.user_id == user.id))
+#     if not wallet_result.scalars().first():
+#         wallet = Wallet(user_id=user.id, balance=0.00)
+#         db.add(wallet)
+
+#     await db.commit()
+
+#     # Give them the access token (Auto-Login)
+#     access_token = create_access_token(subject=user.id)
+#     return {"status": "success", "message": "OTP verified successfully"}
 
 @router.post("/logout")
 async def logout(

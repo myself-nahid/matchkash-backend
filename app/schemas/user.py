@@ -43,6 +43,14 @@ class TokenResponse(BaseModel):
     message: str
     data: TokenData
 
+class verifyOTPResponse(BaseModel):
+    status: str
+    message: str
+
+class forgot_password_otp_response(BaseModel):
+    status: str
+    message: str
+
 class TokenRefreshRequest(BaseModel): 
     refresh_token: str
 
