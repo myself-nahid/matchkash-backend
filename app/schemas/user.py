@@ -84,6 +84,8 @@ class UserResponse(BaseModel):
     phone: str
     full_name: Optional[str]
     profile_photo: Optional[str]
+    email: Optional[str]
+    address: Optional[str]
     is_active: bool
     role: str
     created_at: datetime  
