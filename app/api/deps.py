@@ -27,11 +27,30 @@ async def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+    # 1. SECURE LOGOUT CHECK: Is the token blacklisted?
+    is_blacklisted = await db.scalar(select(TokenBlocklist).where(TokenBlocklist.token == token))
+    if is_blacklisted:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked. Please log in again."
+        )
+
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id: str = payload.get("sub")
+        token_type: str = payload.get("type") # 👈 Extract token type
+        
         if user_id is None:
             raise credentials_exception
+            
+        # Block refresh tokens from being used for normal API calls
+        if token_type != "access":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token type. Please use an access token.",
+            )
+            
     except JWTError:
         raise credentials_exception
 

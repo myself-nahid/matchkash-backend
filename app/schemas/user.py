@@ -35,13 +35,16 @@ class UserLogin(BaseModel):
 class TokenData(BaseModel):
     access_token: str
     refresh_token: str
-    user_type: str
+    user_role: str
 
 # Standard API response model
 class TokenResponse(BaseModel):
     status: str
     message: str
     data: TokenData
+
+class TokenRefreshRequest(BaseModel): 
+    refresh_token: str
 
 class OTPVerify(BaseModel):
     phone: str

@@ -5,8 +5,10 @@ from sqlalchemy import select
 from app.api.deps import get_db
 from app.core.security import create_access_token, create_refresh_token, get_password_hash, verify_password
 from app.models.user import User, Wallet, TokenBlocklist
-from app.schemas.user import TokenResponse, UserCreate, UserLogin, OTPVerify, ForgotPassword, ResetPassword, ResendOTP
+from app.schemas.user import TokenResponse, UserCreate, UserLogin, OTPVerify, ForgotPassword, ResetPassword, ResendOTP, TokenRefreshRequest
 from app.api.deps import oauth2_scheme
+from jose import jwt, JWTError
+from app.core.config import settings
 
 router = APIRouter()
 
@@ -211,7 +213,7 @@ async def login(user_in: UserLogin, db: AsyncSession = Depends(get_db)):
         "message": "Login successful",
         "data": {
             "access_token": access_token,
-            "user_type": user.role,
+            "user_role": user.role,
             "refresh_token": create_refresh_token(subject=user.id)
         }
     }
@@ -269,6 +271,56 @@ async def login(user_in: UserLogin, db: AsyncSession = Depends(get_db)):
 #     await db.commit()
 
 #     return {"message": "Password has been reset successfully. You can now log in."}
+
+@router.post("/refresh-token", response_model=TokenResponse)
+async def refresh_access_token(data: TokenRefreshRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Takes a valid refresh_token and returns a new access_token & refresh_token pair.
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials or token expired",
+    )
+    
+    # 1. Check if the refresh token is blacklisted (logged out)
+    is_blacklisted = await db.scalar(select(TokenBlocklist).where(TokenBlocklist.token == data.refresh_token))
+    if is_blacklisted:
+        raise HTTPException(status_code=401, detail="Refresh token has been revoked. Please log in again.")
+
+    # 2. Decode and validate the refresh token
+    try:
+        payload = jwt.decode(data.refresh_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id: str = payload.get("sub")
+        token_type: str = payload.get("type")
+        
+        if user_id is None or token_type != "refresh":
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    # 3. Verify user still exists and is active
+    user = await db.get(User, int(user_id))
+    if not user or not user.is_active:
+        raise credentials_exception
+
+    # 4. Generate a fresh pair of tokens
+    new_access_token = create_access_token(subject=user.id)
+    new_refresh_token = create_refresh_token(subject=user.id)
+
+    # Optional: Blacklist the OLD refresh token to prevent reuse (Token Rotation)
+    old_token_block = TokenBlocklist(token=data.refresh_token)
+    db.add(old_token_block)
+    await db.commit()
+
+    return {
+        "status": "success",
+        "message": "Token refreshed successfully",
+        "data": {
+            "access_token": new_access_token,
+            "user_role": user.role,
+            "refresh_token": new_refresh_token
+        }
+    }
 
 @router.post("/forgot-password")
 async def forgot_password(data: ForgotPassword, db: AsyncSession = Depends(get_db)):
