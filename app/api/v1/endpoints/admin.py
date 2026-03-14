@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Form, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Form, UploadFile, File, status, Query
+from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
@@ -410,8 +411,10 @@ async def admin_get_leaderboard(
         leaderboard=leaderboard_entries
     )
 
-@router.get("/users", response_model=List[AdminUserListResponse])
+@router.get("/users", response_model=dict)
 async def admin_get_all_users(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_current_admin_user)
 ):
@@ -438,11 +441,25 @@ async def admin_get_all_users(
         .outerjoin(lose_sq, User.id == lose_sq.c.user_id)
         .order_by(User.id.desc())
     )
-    
-    result = await db.execute(query)
-    users_data = result.mappings().all() # .mappings() allows dict-like access
 
-    return [AdminUserListResponse(**user) for user in users_data]
+    # Count total records
+    total_records = await db.scalar(select(func.count(User.id)))
+    total_pages = (total_records + page_size - 1) // page_size
+
+    # Pagination
+    offset = (page - 1) * page_size
+    query = query.offset(offset).limit(page_size)
+
+    result = await db.execute(query)
+    users_data = result.mappings().all()
+
+    return {
+        "page": page,
+        "page_size": page_size,
+        "total_records": total_records,
+        "total_pages": total_pages,
+        "data": [AdminUserListResponse(**user) for user in users_data]
+    }
 
 @router.get("/users/{user_id}", response_model=AdminUserDetailResponse)
 async def admin_get_user_details(
