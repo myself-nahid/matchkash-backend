@@ -29,7 +29,8 @@ import os
 import uuid 
 import shutil
 
-UPLOAD_DIR = "static/uploads"
+UPLOAD_DIR = "uploads/match_images"
+SERVER_URL = os.getenv("SERVER_URL", "").rstrip("/")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 router = APIRouter()
@@ -196,14 +197,18 @@ async def admin_create_match(
     admin: User = Depends(get_current_admin_user)
 ):
     """Admin: Create a new match using Form Data"""
-    # 2. Generate a unique filename (to prevent overwriting files with the same name)
-    file_extension = image_url.filename.split(".")[-1]
-    unique_filename = f"{uuid.uuid4()}.{file_extension}"
-    file_path = os.path.join(UPLOAD_DIR, unique_filename)
+    saved_image_url = None
 
-    # 3. Save the physical file to your server
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(image_url.file, buffer)
+    if image_url is not None:
+        file_extension = image_url.filename.split(".")[-1]
+        unique_filename = f"{uuid.uuid4()}.{file_extension}"
+        file_path = os.path.join(UPLOAD_DIR, unique_filename)
+
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(image_url.file, buffer)
+
+        saved_image_url = f"{SERVER_URL}/{file_path}".replace("\\", "/")
+
     new_match = Match(
         match_title=match_title,
         sport_name=sport_name,
@@ -216,7 +221,7 @@ async def admin_create_match(
         promotional_amount=promotional_amount,
         feature_match=feature_match,
         entry_fee=entry_fee,
-        image_url=f"{UPLOAD_DIR}/{unique_filename}",
+        image_url=saved_image_url,
         status=MatchStatus.UPCOMING
     )
     db.add(new_match)
