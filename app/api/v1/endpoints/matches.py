@@ -22,26 +22,28 @@ async def get_leagues(
     """Populate the 'Select League' dropdown"""
     query = select(Match.league_name).distinct()
     if sport:
-        query = query.where(Match.sport == sport)
+        query = query.where(Match.sport_name == sport)
     
     result = await db.execute(query)
     leagues = result.scalars().all()
     return {"leagues": leagues}
 
 
-@router.get("", response_model=List[MatchResponse])
+@router.get("", response_model=dict)
 async def get_matches(
-    # Filters based on UI
-    tab: str = "All",          # All, Latest, Upcoming, Completed
-    sport: Optional[str] = None, # Football, Basketball
+    tab: str = "All",
+    sport: Optional[str] = None,
     league: Optional[str] = None,
-    match_date: Optional[date] = None, # Pick a Date
+    match_date: Optional[date] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
     """
     Home Screen Main API. 
     Handles 'All', 'Football', 'Basketball', Date Picker, and League Select.
+    Supports pagination via ?page=1&page_size=10
     """
     
     # 1. Subquery for participants count
@@ -59,41 +61,55 @@ async def get_matches(
     )
 
     # 3. Apply Filters
-    
-    # Filter: Sport (Football/Basketball)
-    if sport and sport != "All":
-        query = query.where(Match.sport == sport)
+    current_time = datetime.utcnow()
 
-    # Filter: League Dropdown
+    if sport and sport != "All":
+        query = query.where(Match.sport_name == sport)
+
     if league:
         query = query.where(Match.league_name == league)
 
-    # Filter: Pick a Date
     if match_date:
-        # Cast datetime to date for comparison
         query = query.where(func.date(Match.match_time_start) == match_date)
 
-    # Filter: Tabs (All, Latest, Upcoming, Completed)
-    current_time = datetime.utcnow()
-    
     if tab.lower() == "upcoming":
         query = query.where(Match.status == "upcoming").where(Match.match_time_start > current_time)
     elif tab.lower() == "completed":
         query = query.where(Match.status == "completed")
     elif tab.lower() == "latest":
-        # Logic: Show Live matches first, then Upcoming matches starting very soon
         query = query.where(Match.status.in_(["live", "upcoming"])).order_by(Match.match_time_start.asc())
-    
+
+    # 4. Count total records before pagination
+    count_query = select(func.count(Match.id))
+    if sport and sport != "All":
+        count_query = count_query.where(Match.sport_name == sport)
+    if league:
+        count_query = count_query.where(Match.league_name == league)
+    if match_date:
+        count_query = count_query.where(func.date(Match.match_time_start) == match_date)
+    if tab.lower() == "upcoming":
+        count_query = count_query.where(Match.status == "upcoming").where(Match.match_time_start > current_time)
+    elif tab.lower() == "completed":
+        count_query = count_query.where(Match.status == "completed")
+    elif tab.lower() == "latest":
+        count_query = count_query.where(Match.status.in_(["live", "upcoming"]))
+
+    total_records = await db.scalar(count_query)
+    total_pages = (total_records + page_size - 1) // page_size
+
+    # 5. Pagination
+    offset = (page - 1) * page_size
+    query = query.offset(offset).limit(page_size)
+
     # Execute
     result = await db.execute(query)
     matches_data = result.all()
 
-    # 4. Format Response with Prize Pool Calculation
+    # 6. Format Response with Prize Pool Calculation
     response_list = []
     for match, count in matches_data:
         participants_count = count or 0
         
-        # Prize Pool = (Entry * Users) - Platform Fee
         gross_pool = Decimal(match.entry_fee) * participants_count
         fee_amount = gross_pool * (Decimal(match.platform_fee_percent) / 100)
         prize_pool = gross_pool - fee_amount
@@ -104,8 +120,14 @@ async def get_matches(
             prize_pool=round(prize_pool, 2)
         )
         response_list.append(match_response)
-        
-    return response_list
+
+    return {
+        "page": page,
+        "page_size": page_size,
+        "total_records": total_records,
+        "total_pages": total_pages,
+        "data": response_list
+    }
 
 # PREDICTION ENDPOINTS (JOIN & HISTORY)
 @router.post("/join")
@@ -162,31 +184,48 @@ async def join_contest(
     return {"message": "Prediction submitted successfully. Good luck!"}
 
 
-@router.get("/my-predictions", response_model=List[MyPredictionResponse])
+@router.get("/my-predictions", response_model=dict)
 async def get_my_predictions(
-    filter: str = "All", # All, Latest, Won, Lose
+    filter: str = "All",
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
     """
     'All Predictions' Screen API.
     Handles tabs: All, Latest (Pending), Won, Lose.
+    Supports pagination via ?page=1&page_size=10
     """
     query = (
         select(Prediction)
-        .options(joinedload(Prediction.match)) # Eager load match details
+        .options(joinedload(Prediction.match))
         .where(Prediction.user_id == user.id)
         .order_by(Prediction.created_at.desc())
     )
 
-    # UI Tab Filters
     if filter.lower() == "won":
         query = query.where(Prediction.status == "WON")
     elif filter.lower() == "lose":
         query = query.where(Prediction.status == "LOST")
     elif filter.lower() == "latest":
-        # 'Latest' usually means Active/Pending matches in this context
         query = query.where(Prediction.status == "PENDING")
+
+    # Count total records before pagination
+    count_query = select(func.count(Prediction.id)).where(Prediction.user_id == user.id)
+    if filter.lower() == "won":
+        count_query = count_query.where(Prediction.status == "WON")
+    elif filter.lower() == "lose":
+        count_query = count_query.where(Prediction.status == "LOST")
+    elif filter.lower() == "latest":
+        count_query = count_query.where(Prediction.status == "PENDING")
+
+    total_records = await db.scalar(count_query)
+    total_pages = (total_records + page_size - 1) // page_size
+
+    # Pagination
+    offset = (page - 1) * page_size
+    query = query.offset(offset).limit(page_size)
 
     result = await db.execute(query)
     predictions = result.scalars().all()
@@ -209,37 +248,55 @@ async def get_my_predictions(
             rank=p.rank,
             prize_amount=p.prize_amount
         ))
-    
-    return response
+
+    return {
+        "page": page,
+        "page_size": page_size,
+        "total_records": total_records,
+        "total_pages": total_pages,
+        "data": response
+    }
 
 # Leaderboard Screen Endpoint
-@router.get("/{match_id}/leaderboard", response_model=LeaderboardResponse)
+@router.get("/{match_id}/leaderboard", response_model=dict)
 async def get_match_leaderboard(
     match_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    """Fetches the detailed leaderboard for a specific match"""
+    """
+    Fetches the detailed leaderboard for a specific match.
+    Supports pagination via ?page=1&page_size=10
+    """
     
     # 1. Get Match Details
     match = await db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
 
-    # 2. Get all predictions for this match, joining user data
+    # 2. Count total predictions
+    total_records = await db.scalar(
+        select(func.count(Prediction.id)).where(Prediction.match_id == match_id)
+    )
+    total_pages = (total_records + page_size - 1) // page_size
+
+    # 3. Get paginated predictions
     predictions_query = (
         select(Prediction)
         .options(joinedload(Prediction.user))
         .where(Prediction.match_id == match_id)
         .order_by(Prediction.rank.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
     )
     result = await db.execute(predictions_query)
     predictions = result.scalars().unique().all()
     
-    # 3. Format the leaderboard entries
+    # 4. Format the leaderboard entries
     leaderboard_entries = []
     for p in predictions:
-        # Determine predicted team
         predicted_team = ""
         if p.predicted_winner == "A":
             predicted_team = match.team_a
@@ -257,13 +314,19 @@ async def get_match_leaderboard(
         )
         leaderboard_entries.append(entry)
 
-    return LeaderboardResponse(
-        match_id=match.id,
-        sport=match.sport_name,
-        league_name=match.league_name,
-        team_a=match.team_a,
-        team_b=match.team_b,
-        match_time_start=match.match_time_start,
-        participants_count=len(leaderboard_entries),
-        leaderboard=leaderboard_entries
-    )
+    return {
+        "page": page,
+        "page_size": page_size,
+        "total_records": total_records,
+        "total_pages": total_pages,
+        "data": LeaderboardResponse(
+            match_id=match.id,
+            sport=match.sport_name,
+            league_name=match.league_name,
+            team_a=match.team_a,
+            team_b=match.team_b,
+            match_time_start=match.match_time_start,
+            participants_count=len(leaderboard_entries),
+            leaderboard=leaderboard_entries
+        )
+    }
