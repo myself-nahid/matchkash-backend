@@ -682,9 +682,11 @@ async def get_user_prediction_details(
     return response
 
 # Withdrawal Management 
-@router.get("/withdrawals", response_model=List[AdminTransactionResponse])
+@router.get("/withdrawals", response_model=dict)
 async def get_all_withdrawals(
-    status: str = "All", # Can be All, Pending, Completed, Rejected
+    status: str = "All",
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_current_admin_user)
 ):
@@ -695,13 +697,31 @@ async def get_all_withdrawals(
         .where(Transaction.type == "Withdraw")
         .order_by(Transaction.created_at.desc())
     )
-    
+
     if status != "All":
         query = query.where(Transaction.status == status)
-        
-    result = await db.execute(query)
-    return result.scalars().unique().all()
 
+    # Count total records
+    count_query = select(func.count(Transaction.id)).where(Transaction.type == "Withdraw")
+    if status != "All":
+        count_query = count_query.where(Transaction.status == status)
+
+    total_records = await db.scalar(count_query)
+    total_pages = (total_records + page_size - 1) // page_size
+
+    # Pagination
+    offset = (page - 1) * page_size
+    query = query.offset(offset).limit(page_size)
+
+    result = await db.execute(query)
+
+    return {
+        "page": page,
+        "page_size": page_size,
+        "total_records": total_records,
+        "total_pages": total_pages,
+        "data": result.scalars().unique().all()
+    }
 
 @router.post("/withdrawals/{transaction_id}/approve", response_model=AdminTransactionResponse)
 async def approve_withdrawal(
