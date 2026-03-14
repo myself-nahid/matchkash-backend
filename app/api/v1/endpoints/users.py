@@ -1,5 +1,6 @@
 import os
 import shutil
+from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db, get_current_user
@@ -7,9 +8,12 @@ from app.models.user import User
 from app.schemas.user import UserResponse, UserUpdateProfile, UserUpdatePassword, UserAvatarUpdate
 from app.core.security import verify_password, get_password_hash
 
+load_dotenv()
+
 router = APIRouter()
 
 UPLOAD_DIR = "uploads/avatars"
+SERVER_URL = os.getenv("SERVER_URL", "").rstrip("/")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @router.get("/me", response_model=UserResponse)
@@ -57,50 +61,49 @@ async def change_my_password(
     
     return {"message": "Password updated successfully"}
 
-@router.post("/me/avatar", response_model=UserResponse)
-async def upload_profile_photo(
-    payload: UserAvatarUpdate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Save Cloudinary avatar URL"""
-
-    # Convert HttpUrl → str
-    current_user.profile_photo = str(payload.profile_photo)
-
-    db.add(current_user)
-    await db.commit()
-    await db.refresh(current_user)
-
-    return current_user
-
 # @router.post("/me/avatar", response_model=UserResponse)
 # async def upload_profile_photo(
-#     file: UploadFile = File(...),
+#     payload: UserAvatarUpdate,
 #     db: AsyncSession = Depends(get_db),
 #     current_user: User = Depends(get_current_user)
 # ):
-#     """Upload a new profile picture (Camera Icon in UI)"""
-    
-#     # Validate file type (basic)
-#     if not file.content_type.startswith("image/"):
-#         raise HTTPException(status_code=400, detail="File must be an image")
+#     """Save Cloudinary avatar URL"""
 
-#     # Generate a unique filename using the user's ID
-#     file_extension = file.filename.split(".")[-1]
-#     file_name = f"user_{current_user.id}_avatar.{file_extension}"
-#     file_path = os.path.join(UPLOAD_DIR, file_name)
+#     # Convert HttpUrl → str
+#     current_user.profile_photo = str(payload.profile_photo)
 
-#     # Save the file locally (In production, you'd upload to AWS S3 / GCP here)
-#     with open(file_path, "wb") as buffer:
-#         shutil.copyfileobj(file.file, buffer)
-
-#     # Update database with the file URL/path
-#     # Assuming your FastAPI app serves static files from /uploads
-#     current_user.profile_photo = f"/{file_path}"
-    
 #     db.add(current_user)
 #     await db.commit()
 #     await db.refresh(current_user)
 
 #     return current_user
+
+@router.post("/me/avatar", response_model=UserResponse)
+async def upload_profile_photo(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Upload a new profile picture (Camera Icon in UI)"""
+    
+    # Validate file type (basic)
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image")
+
+    # Generate a unique filename using the user's ID
+    file_extension = file.filename.split(".")[-1]
+    file_name = f"user_{current_user.id}_avatar.{file_extension}"
+    file_path = os.path.join(UPLOAD_DIR, file_name)
+
+    # Save the file locally (In production, you'd upload to AWS S3 / GCP here)
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # Update database with the full URL including SERVER_URL
+    current_user.profile_photo = f"{SERVER_URL}/{file_path}".replace("\\", "/")
+    
+    db.add(current_user)
+    await db.commit()
+    await db.refresh(current_user)
+
+    return current_user

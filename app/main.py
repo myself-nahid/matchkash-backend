@@ -2,6 +2,7 @@ import subprocess
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.api import api_router
 from app.core.config import settings
@@ -11,7 +12,6 @@ def run_migrations():
     """Run alembic upgrade head as a separate process"""
     try:
         print("Checking for database migrations...")
-        # This is equivalent to typing 'alembic upgrade head' in the terminal
         subprocess.run(["alembic", "upgrade", "head"], check=True)
         print("Database migrations applied successfully.")
     except Exception as e:
@@ -19,7 +19,6 @@ def run_migrations():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Run migrations before the app starts
     run_migrations()
     yield
 
@@ -38,6 +37,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve uploaded files as static files
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
