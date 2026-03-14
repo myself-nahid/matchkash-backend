@@ -81,8 +81,8 @@ async def get_dashboard_stats(
         active_matches=active_matches or 0,
         pending_withdrawals=pending_withdrawals or 0,
         active_users_today=active_users_today or 0,
-        total_entry_collection=financial_res.total_collection if financial_res else Decimal('0.0'),
-        total_platform_revenue=financial_res.total_revenue if financial_res else Decimal('0.0'),
+        total_entry_collection=financial_res.total_collection if financial_res and financial_res.total_collection is not None else Decimal('0.0'),
+        total_platform_revenue=financial_res.total_revenue if financial_res and financial_res.total_revenue is not None else Decimal('0.0'),
         monthly_revenue=monthly_revenue_data
     )
 
