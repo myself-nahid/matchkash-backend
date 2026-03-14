@@ -243,7 +243,7 @@ async def admin_update_match(
     promotional_amount: float = Form(0.0),
     feature_match: int = Form(0),
     entry_fee: float = Form(...),
-    image_url: Optional[str] = Form(None),
+    image_url: UploadFile = File(None),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_current_admin_user)
 ):
@@ -266,7 +266,17 @@ async def admin_update_match(
     match.platform_fee_percent = platform_fee_percent
     match.promotional_amount = promotional_amount
     match.feature_match = feature_match
-    match.image_url = image_url
+
+    # Only update image if a new file is uploaded, otherwise keep existing
+    if image_url is not None:
+        file_extension = image_url.filename.split(".")[-1]
+        unique_filename = f"{uuid.uuid4()}.{file_extension}"
+        file_path = os.path.join(UPLOAD_DIR, unique_filename)
+
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(image_url.file, buffer)
+
+        match.image_url = f"{SERVER_URL}/{file_path}".replace("\\", "/")
 
     db.add(match)
     await db.commit()
