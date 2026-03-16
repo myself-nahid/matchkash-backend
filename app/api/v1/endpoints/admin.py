@@ -1007,21 +1007,46 @@ async def update_system_policies(
     
     return setting
 
-@router.get("/notifications", response_model=List[NotificationResponse])
+@router.get("/notifications", response_model=dict)
 async def get_admin_notifications(
-    is_read: Optional[bool] = None, # Allows filtering by "Unread" tab
+    is_read: Optional[bool] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_current_admin_user)
 ):
     """Fetch notifications for the admin dashboard"""
-    query = select(Notification).where(Notification.user_id == admin.id).order_by(Notification.created_at.desc())
-    
+    query = (
+        select(Notification)
+        .where(Notification.user_id == admin.id)
+        .order_by(Notification.created_at.desc())
+    )
+
     if is_read is not None:
         query = query.where(Notification.is_read == is_read)
-        
-    result = await db.execute(query)
-    return result.scalars().all()
 
+    # Count total records
+    count_query = select(func.count(Notification.id)).where(Notification.user_id == admin.id)
+    if is_read is not None:
+        count_query = count_query.where(Notification.is_read == is_read)
+
+    total_records = await db.scalar(count_query)
+    total_pages = (total_records + page_size - 1) // page_size
+
+    # Pagination
+    offset = (page - 1) * page_size
+    query = query.offset(offset).limit(page_size)
+
+    result = await db.execute(query)
+    notifications = result.scalars().all()
+
+    return {
+        "page": page,
+        "page_size": page_size,
+        "total_records": total_records,
+        "total_pages": total_pages,
+        "data": [NotificationResponse.from_orm(n) for n in notifications]  # ← fixed
+    }
 
 @router.put("/notifications/{notification_id}/read")
 async def mark_notification_as_read(
