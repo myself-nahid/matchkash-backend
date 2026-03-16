@@ -149,6 +149,7 @@ class AdminLanguageUpdate(BaseModel):
 class SystemPolicySchema(BaseModel):
     terms_and_conditions: Optional[str] = None
     contest_rules: Optional[str] = None
+    privacy_policy: Optional[str] = None
 
     class Config:
         from_attributes = True

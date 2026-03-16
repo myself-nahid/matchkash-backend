@@ -20,8 +20,8 @@ class MatchResponse(BaseModel):
     match_time_start: datetime
     team_a: str
     team_b: str
-    # team_a_logo: Optional[str] = None
-    # team_b_logo: Optional[str] = None
+    team_a_logo: Optional[str] = None
+    team_b_logo: Optional[str] = None
     platform_fee_percent: Decimal
     promotional_amount: Decimal
     feature_match: int

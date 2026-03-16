@@ -189,6 +189,8 @@ async def admin_create_match(
     match_time_start: datetime = Form(...),
     team_a: str = Form(...),
     team_b: str = Form(...),
+    team_a_logo: UploadFile = File(None),
+    team_b_logo: UploadFile = File(None),
     platform_fee_percent: float = Form(...),
     promotional_amount: float = Form(0.0),
     feature_match: int = Form(0),
@@ -209,6 +211,24 @@ async def admin_create_match(
             shutil.copyfileobj(image_url.file, buffer)
 
         saved_image_url = f"{SERVER_URL}/{file_path}".replace("\\", "/")
+    
+    saved_team_a_logo_url = None
+    if team_a_logo is not None:
+        file_extension = team_a_logo.filename.split(".")[-1]
+        unique_filename = f"logo_{uuid.uuid4()}.{file_extension}"
+        file_path = os.path.join(UPLOAD_DIR, unique_filename)
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(team_a_logo.file, buffer)
+        saved_team_a_logo_url = f"{SERVER_URL}/{file_path}".replace("\\", "/")
+
+    saved_team_b_logo_url = None
+    if team_b_logo is not None:
+        file_extension = team_b_logo.filename.split(".")[-1]
+        unique_filename = f"logo_{uuid.uuid4()}.{file_extension}"
+        file_path = os.path.join(UPLOAD_DIR, unique_filename)
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(team_b_logo.file, buffer)
+        saved_team_b_logo_url = f"{SERVER_URL}/{file_path}".replace("\\", "/")
 
     new_match = Match(
         match_title=match_title,
@@ -218,6 +238,8 @@ async def admin_create_match(
         match_time_start=match_time_start,
         team_a=team_a,
         team_b=team_b,
+        team_a_logo=saved_team_a_logo_url,
+        team_b_logo=saved_team_b_logo_url,
         platform_fee_percent=platform_fee_percent,
         promotional_amount=promotional_amount,
         feature_match=feature_match,
@@ -240,6 +262,8 @@ async def admin_update_match(
     match_time_start: datetime = Form(...),
     team_a: str = Form(...),
     team_b: str = Form(...),
+    team_a_logo: UploadFile = File(None),
+    team_b_logo: UploadFile = File(None),
     platform_fee_percent: float = Form(...),
     promotional_amount: float = Form(0.0),
     feature_match: int = Form(0),
@@ -261,6 +285,8 @@ async def admin_update_match(
     match.league_name = league_name
     match.team_a = team_a
     match.team_b = team_b
+    match.team_a_logo = team_a_logo
+    match.team_b_logo = team_b_logo
     match.match_date = match_date
     match.match_time_start = match_time_start
     match.entry_fee = entry_fee
@@ -278,6 +304,22 @@ async def admin_update_match(
             shutil.copyfileobj(image_url.file, buffer)
 
         match.image_url = f"{SERVER_URL}/{file_path}".replace("\\", "/")
+
+    if team_a_logo is not None:
+        file_extension = team_a_logo.filename.split(".")[-1]
+        unique_filename = f"logo_{uuid.uuid4()}.{file_extension}"
+        file_path = os.path.join(UPLOAD_DIR, unique_filename)
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(team_a_logo.file, buffer)
+        match.team_a_logo = f"{SERVER_URL}/{file_path}".replace("\\", "/")
+    
+    if team_b_logo is not None:
+        file_extension = team_b_logo.filename.split(".")[-1]
+        unique_filename = f"logo_{uuid.uuid4()}.{file_extension}"
+        file_path = os.path.join(UPLOAD_DIR, unique_filename)
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(team_b_logo.file, buffer)
+        match.team_b_logo = f"{SERVER_URL}/{file_path}".replace("\\", "/")
 
     db.add(match)
     await db.commit()

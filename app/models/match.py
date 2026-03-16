@@ -20,8 +20,8 @@ class Match(Base):
     match_time_start = Column(DateTime(timezone=True), nullable=False)
     team_a = Column(String)
     team_b = Column(String)
-    # team_a_logo = Column(String, nullable=True)
-    # team_b_logo = Column(String, nullable=True)
+    team_a_logo = Column(String, nullable=True)
+    team_b_logo = Column(String, nullable=True)
     platform_fee_percent = Column(DECIMAL(5, 2), default=10.00)
     promotional_amount = Column(DECIMAL(10, 2), default=0.00) # For marketing/promotions
     feature_match = Column(Integer, default=0) # 0 = No, 1 = Yes (For UI Highlighting)
