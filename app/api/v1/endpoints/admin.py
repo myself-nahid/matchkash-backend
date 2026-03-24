@@ -248,6 +248,18 @@ async def admin_create_match(
         status=MatchStatus.UPCOMING
     )
     db.add(new_match)
+    await db.flush() # Flush to get the new_match.id
+    # Create a notification for ALL active users
+    active_users = await db.scalars(select(User).where(User.is_active == True))
+    for user in active_users:
+        notification = Notification(
+            user_id=user.id,
+            title="New Match Available!",
+            message=f"{new_match.team_a} vs {new_match.team_b} is now open for predictions.",
+            type="NEW_MATCH",
+            reference_id=new_match.id
+        )
+        db.add(notification)
     await db.commit()
     await db.refresh(new_match)
     return new_match
@@ -779,6 +791,15 @@ async def approve_withdrawal(
 
     # Change status to Completed
     tx.status = "Completed"
+    # Notify the user that their withdrawal was approved
+    notification = Notification(
+        user_id=tx.user_id,
+        title="Withdrawal Approved",
+        message=f"Your withdrawal of {abs(tx.amount)} HTG has been processed.",
+        type="WITHDRAWAL_COMPLETED",
+        reference_id=tx.id
+    )
+    db.add(notification)
     db.add(tx)
     await db.commit()
     await db.refresh(tx)
@@ -806,7 +827,15 @@ async def reject_withdrawal(
         # Amount is negative (e.g., -100), so subtracting it will add it back
         wallet.balance -= tx.amount 
         db.add(wallet)
-
+     # Notify the user that their withdrawal was rejected
+    notification = Notification(
+        user_id=tx.user_id,
+        title="Withdrawal Rejected",
+        message=f"Your withdrawal of {abs(tx.amount)} HTG was rejected. The amount has been refunded to your wallet.",
+        type="WITHDRAWAL_REJECTED",
+        reference_id=tx.id
+    )
+    db.add(notification)
     db.add(tx)
     await db.commit()
     await db.refresh(tx)
