@@ -29,10 +29,17 @@ app = FastAPI(
     lifespan=lifespan 
 )
 
+origins = [
+    "http://localhost:3000",
+    "http://10.10.12.70:3001",  
+    "http://10.10.12.70:3000",
+    "http://10.10.12.11:3000",
+]
+
 # CORS (Allow Flutter App)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins= origins, 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

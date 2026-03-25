@@ -724,7 +724,8 @@ async def get_user_prediction_details(
             match_time_str = match_time_str[1:] # Remove leading zero (e.g., 08.00am -> 8.00am)
 
         response.append(AdminUserPredictionPopup(
-            sport_name=m.sport,
+            # sport_name=m.sport,
+            sport_name=m.sport_name,
             league_name=m.league_name,
             match_date=match_date_str,
             match_time_start=match_time_str,
