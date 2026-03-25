@@ -38,13 +38,16 @@ class AdminTransactionUser(BaseModel):
     full_name: Optional[str]
     phone: str
 
+    class Config:
+        from_attributes = True
+
 class AdminTransactionResponse(BaseModel):
     id: int
     amount: Decimal
     status: str
     created_at: datetime
     reference: Optional[str]
-    user: AdminTransactionUser # Nested user info
+    user: AdminTransactionUser 
 
     class Config:
         from_attributes = True

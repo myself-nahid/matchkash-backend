@@ -769,13 +769,14 @@ async def get_all_withdrawals(
     query = query.offset(offset).limit(page_size)
 
     result = await db.execute(query)
+    transactions = result.scalars().unique().all() 
 
     return {
         "page": page,
         "page_size": page_size,
         "total_records": total_records,
         "total_pages": total_pages,
-        "data": result.scalars().unique().all()
+        "data": [AdminTransactionResponse.from_orm(tx) for tx in transactions]
     }
 
 @router.post("/withdrawals/{transaction_id}/approve", response_model=AdminTransactionResponse)
