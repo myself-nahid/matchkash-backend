@@ -138,3 +138,37 @@ class AdminResultEntry(BaseModel):
     score_a: int
     score_b: int
     winning_team: str # "A", "B", or "Draw"
+
+class LeaderboardMatchInfo(BaseModel):
+    match_id: int
+    league_name: str
+    team_a: str
+    team_b: str
+    start_time: datetime
+    score_a: Optional[int] = None
+    score_b: Optional[int] = None
+    prize_pool: Decimal
+    participants_count: int
+    status: str
+
+    class Config:
+        from_attributes = True
+
+class LeaderboardEntry(BaseModel):
+    rank: Optional[int]
+    player_name: Optional[str] = "Player" 
+    status: str # "Won", "Lost", or ""
+
+class DetailedLeaderboardResponse(BaseModel):
+    # Header Info
+    team_a: str
+    team_b: str
+    my_position_text: str # e.g., "#12 of 100"
+    total_participants: int
+    image_url: Optional[str] = None
+    
+    # Ranked List
+    leaderboard: List[LeaderboardEntry]
+
+    class Config:
+        from_attributes = True

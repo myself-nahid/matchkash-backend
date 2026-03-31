@@ -70,3 +70,6 @@ uploads/
 
 # Ignore Alembic migration versions
 alembic/versions/*
+
+# Ignore moncash_service.py
+moncash_service.py

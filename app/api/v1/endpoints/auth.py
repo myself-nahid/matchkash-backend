@@ -52,7 +52,8 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
 
     return {
         "message": "OTP sent successfully to your phone number",
-        "phone": user_in.phone
+        "phone": user_in.phone,
+        "mock_otp": otp  
     }
 
 # this is real twilio otp send function, when client give twilio credentials that time implelent this function
