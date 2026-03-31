@@ -90,6 +90,8 @@ class UserUpdatePassword(BaseModel):
             raise ValueError('New passwords do not match')
         return self
 
+from decimal import Decimal
+
 class UserResponse(BaseModel):
     id: int
     phone: str
@@ -99,6 +101,7 @@ class UserResponse(BaseModel):
     address: Optional[str]
     is_active: bool
     role: str
+    user_balance: Optional[Decimal] = 0.00
     created_at: datetime  
 
     class Config:

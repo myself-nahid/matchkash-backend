@@ -31,6 +31,13 @@ class User(Base):
     predictions = relationship("Prediction", back_populates="user")
     transactions = relationship("Transaction", back_populates="user")
 
+    @property
+    def user_balance(self):
+        """Helper to get balance directly from user instance for schemas"""
+        if self.wallet:
+            return self.wallet.balance
+        return 0.00
+
 class Wallet(Base):
     __tablename__ = "wallets"
 
