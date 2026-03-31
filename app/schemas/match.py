@@ -146,6 +146,8 @@ class LeaderboardMatchInfo(BaseModel):
     league_name: str
     team_a: str
     team_b: str
+    team_a_logo: Optional[str] = None
+    team_b_logo: Optional[str] = None
     start_time: datetime
     score_a: Optional[int] = None
     score_b: Optional[int] = None
@@ -165,6 +167,8 @@ class DetailedLeaderboardResponse(BaseModel):
     # Header Info
     team_a: str
     team_b: str
+    team_a_logo: Optional[str] = None
+    team_b_logo: Optional[str] = None
     my_position_text: str # e.g., "#12 of 100"
     total_participants: int
     image_url: Optional[str] = None

@@ -86,6 +86,8 @@ async def get_leaderboard_match_list(
             league_name=match.league_name,
             team_a=match.team_a,
             team_b=match.team_b,
+            team_a_logo=match.team_a_logo,
+            team_b_logo=match.team_b_logo,
             start_time=match.match_time_start,
             score_a=match.score_a,
             score_b=match.score_b,
@@ -149,6 +151,8 @@ async def get_detailed_leaderboard(
     return DetailedLeaderboardResponse(
         team_a=match.team_a,
         team_b=match.team_b,
+        team_a_logo=match.team_a_logo,
+        team_b_logo=match.team_b_logo,
         image_url=match.image_url,
         my_position_text=my_position_text,
         total_participants=total_participants,
