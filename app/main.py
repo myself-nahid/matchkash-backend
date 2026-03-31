@@ -10,9 +10,24 @@ from app.core.config import settings
 # Run migrations using subprocess
 def run_migrations():
     """Run alembic upgrade head as a separate process"""
+    import sys
+    import os
     try:
         print("Checking for database migrations...")
-        subprocess.run(["alembic", "upgrade", "head"], check=True)
+        # Get the directory of the current python executable
+        executable_path = sys.executable
+        executable_dir = os.path.dirname(executable_path)
+        
+        # In Windows it is Scripts, in Linux/Mac it is bin
+        alembic_cmd = os.path.join(executable_dir, "alembic")
+        if os.name == 'nt': # Windows
+            alembic_cmd += ".exe"
+            
+        if os.path.exists(alembic_cmd):
+            subprocess.run([alembic_cmd, "upgrade", "head"], check=True)
+        else:
+            # Fallback to simple command if not found in same dir
+            subprocess.run(["alembic", "upgrade", "head"], check=True)
         print("Database migrations applied successfully.")
     except Exception as e:
         print(f"Error applying migrations: {e}")

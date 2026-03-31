@@ -29,6 +29,50 @@ async def get_leagues(
     return {"leagues": leagues}
 
 
+@router.get("/{match_id}", response_model=MatchResponse)
+async def get_match_detail(
+    match_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Get single match details by ID with calculated prize pool and participants count"""
+    
+    # 1. Subquery for participants count for this specific match
+    participants_subquery = (
+        select(Prediction.match_id, func.count(Prediction.id).label("count"))
+        .where(Prediction.match_id == match_id)
+        .group_by(Prediction.match_id)
+        .subquery()
+    )
+
+    # 2. Query match and join with count
+    query = (
+        select(Match, participants_subquery.c.count)
+        .outerjoin(participants_subquery, Match.id == participants_subquery.c.match_id)
+        .where(Match.id == match_id)
+    )
+
+    result = await db.execute(query)
+    match_data = result.one_or_none()
+
+    if not match_data:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    match, count = match_data
+    participants_count = count or 0
+
+    # Calculate Prize Pool (Gross pool - Platform Fee)
+    gross_pool = Decimal(match.entry_fee) * participants_count
+    fee_amount = gross_pool * (Decimal(match.platform_fee_percent) / 100)
+    prize_pool = gross_pool - fee_amount
+
+    return MatchResponse(
+        **match.__dict__,
+        participants_count=participants_count,
+        prize_pool=round(prize_pool, 2)
+    )
+
+
 @router.get("", response_model=dict)
 async def get_matches(
     tab: str = "All",
