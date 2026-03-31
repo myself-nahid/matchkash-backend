@@ -44,6 +44,8 @@ class MyPredictionResponse(BaseModel):
     league_name: str
     team_a: str
     team_b: str
+    team_a_logo: Optional[str] = None
+    team_b_logo: Optional[str] = None
     match_date: datetime
     
     # User's Input
