@@ -156,7 +156,7 @@ class LeaderboardMatchInfo(BaseModel):
     class Config:
         from_attributes = True
 
-class LeaderboardEntry(BaseModel):
+class SimpleLeaderboardEntry(BaseModel):
     rank: Optional[int]
     player_name: Optional[str] = "Player" 
     status: str # "Won", "Lost", or ""
@@ -170,7 +170,7 @@ class DetailedLeaderboardResponse(BaseModel):
     image_url: Optional[str] = None
     
     # Ranked List
-    leaderboard: List[LeaderboardEntry]
+    leaderboard: List[SimpleLeaderboardEntry]
 
     class Config:
         from_attributes = True
