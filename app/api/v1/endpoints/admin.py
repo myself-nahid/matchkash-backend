@@ -1,15 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Form, UploadFile, File, status, Query
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from sqlalchemy.orm import joinedload
-from typing import List
+from typing import List, Optional
+from decimal import Decimal
+from datetime import datetime, date, timedelta, timezone
+from sqlalchemy import extract
 from app.api.deps import get_db, get_current_admin_user
-from app.models.match import Match, MatchStatus
-from app.models.user import User, Wallet
-from app.models.transaction import Transaction
-from app.schemas.match import AdminMatchCreate, AdminMatchUpdate, AdminResultEntry, MatchResponse, LeaderboardResponse, LeaderboardEntry
-from app.schemas.wallet import AdminTransactionResponse
 from app.models.match import Match, MatchStatus, Prediction
 from app.models.user import User, Wallet, Notification
 from app.models.transaction import Transaction
@@ -17,17 +14,11 @@ from app.schemas.match import AdminMatchCreate, AdminMatchUpdate, AdminResultEnt
 from app.schemas.wallet import AdminTransactionResponse
 from app.schemas.admin import DashboardStatsResponse, AdminUserListResponse, AdminUserDetailResponse, AdminWalletDetail, AdminTransactionDetail, AdminPredictionDetail, AdminUserWalletPopup, AdminUserTransactionPopup, AdminUserPredictionPopup, AdminUserListResponse, RevenueStatsResponse, AdminAccountResponse, AdminAccountUpdate, AdminLanguageUpdate, AdminSecurityUpdate, SystemPolicySchema, AdminWithdrawalModalDetail, NotificationResponse
 from app.services.contest_engine import ContestEngine
-from sqlalchemy.orm import joinedload
-from typing import List, Optional
-from decimal import Decimal
-from app.services.contest_engine import ContestEngine
-from sqlalchemy import func
-from datetime import datetime, date, timedelta
-from sqlalchemy import extract
+from app.services.match_status_service import sync_match_statuses, compute_match_status
 from app.core.security import verify_password, get_password_hash
 from app.models.setting import SystemSetting
 import os
-import uuid 
+import uuid
 import shutil
 
 UPLOAD_DIR = "uploads/match_images"
@@ -90,13 +81,21 @@ async def get_dashboard_stats(
 
 # --- Match Management ---
 
-@router.get("/matches", response_model=List[MatchResponse])
+@router.get("/matches", response_model=dict)
 async def admin_get_all_matches(
-    status: Optional[str] = None, # Upcoming, Live, Completed, Cancelled
+    tab: Optional[str] = None,   # All | Upcoming | Live | Latest | Completed
+    sport: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(6, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_current_admin_user)
 ):
-    """Admin: Get all matches with participant counts and prize pools"""
+    """Admin: Get all matches with participant counts, prize pools, pagination, and real-time status"""
+
+    # Sync real-time statuses before querying
+    await sync_match_statuses(db)
+    now_utc = datetime.now(timezone.utc)
+
     participants_subquery = (
         select(Prediction.match_id, func.count(Prediction.id).label("count"))
         .group_by(Prediction.match_id)
@@ -107,12 +106,45 @@ async def admin_get_all_matches(
         .outerjoin(participants_subquery, Match.id == participants_subquery.c.match_id)
         .order_by(Match.match_time_start.desc())
     )
-    if status:
-        query = query.where(Match.status == status.lower())
-    
+
+    # Sport filter
+    if sport and sport.lower() != "all":
+        query = query.where(Match.sport_name == sport)
+
+    # Tab / status filter
+    tab_lc = (tab or "").lower()
+    if tab_lc == "upcoming":
+        query = query.where(Match.status == MatchStatus.UPCOMING)
+    elif tab_lc == "live":
+        query = query.where(Match.status == MatchStatus.LIVE)
+    elif tab_lc == "latest":
+        query = query.where(Match.status.in_([MatchStatus.LIVE, MatchStatus.UPCOMING]))
+    elif tab_lc == "completed":
+        query = query.where(Match.status == MatchStatus.COMPLETED)
+
+    # Count query
+    count_query = select(func.count(Match.id))
+    if sport and sport.lower() != "all":
+        count_query = count_query.where(Match.sport_name == sport)
+    if tab_lc == "upcoming":
+        count_query = count_query.where(Match.status == MatchStatus.UPCOMING)
+    elif tab_lc == "live":
+        count_query = count_query.where(Match.status == MatchStatus.LIVE)
+    elif tab_lc == "latest":
+        count_query = count_query.where(Match.status.in_([MatchStatus.LIVE, MatchStatus.UPCOMING]))
+    elif tab_lc == "completed":
+        count_query = count_query.where(Match.status == MatchStatus.COMPLETED)
+
+    total_records = await db.scalar(count_query) or 0
+    total_pages = (total_records + page_size - 1) // page_size if total_records else 0
+
+    # Pagination
+    offset = (page - 1) * page_size
+    query = query.offset(offset).limit(page_size)
+
     result = await db.execute(query)
     matches_data = result.all()
-    
+
     response_list = []
     for match, count in matches_data:
         participants_count = count or 0
@@ -120,14 +152,23 @@ async def admin_get_all_matches(
             (Decimal(match.entry_fee) * participants_count) *
             (1 - (Decimal(match.platform_fee_percent) / 100))
         )
+        computed_status = compute_match_status(match, now_utc)
+        match_dict = {k: v for k, v in match.__dict__.items() if k not in ("_sa_instance_state", "status")}
         match_response = MatchResponse(
-            **match.__dict__,
+            **match_dict,
             participants_count=participants_count,
-            prize_pool=round(prize_pool, 2)
+            prize_pool=round(prize_pool, 2),
+            status=computed_status,
         )
         response_list.append(match_response)
-        
-    return response_list
+
+    return {
+        "page": page,
+        "page_size": page_size,
+        "total_records": total_records,
+        "total_pages": total_pages,
+        "data": response_list,
+    }
 
 # @router.post("/matches", response_model=MatchResponse)
 # async def admin_create_match(
@@ -288,8 +329,8 @@ async def admin_update_match(
     match = await db.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
-    if match.status != MatchStatus.UPCOMING:
-        raise HTTPException(status_code=400, detail="Cannot edit a match that is not upcoming")
+    if match.status in (MatchStatus.COMPLETED, MatchStatus.CANCELLED):
+        raise HTTPException(status_code=400, detail="Cannot edit a match that is already completed or cancelled")
 
     # Update fields from the form request
     match.match_title = match_title
