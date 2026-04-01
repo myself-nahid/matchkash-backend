@@ -15,6 +15,7 @@ from app.schemas.wallet import AdminTransactionResponse
 from app.schemas.admin import DashboardStatsResponse, AdminUserListResponse, AdminUserDetailResponse, AdminWalletDetail, AdminTransactionDetail, AdminPredictionDetail, AdminUserWalletPopup, AdminUserTransactionPopup, AdminUserPredictionPopup, AdminUserListResponse, RevenueStatsResponse, AdminAccountResponse, AdminAccountUpdate, AdminLanguageUpdate, AdminSecurityUpdate, SystemPolicySchema, AdminWithdrawalModalDetail, NotificationResponse
 from app.services.contest_engine import ContestEngine
 from app.services.match_status_service import sync_match_statuses, compute_match_status
+from app.services.notification_service import send_push_message
 from app.core.security import verify_password, get_password_hash
 from app.models.setting import SystemSetting
 import os
@@ -427,6 +428,49 @@ async def admin_enter_result(
     background_tasks.add_task(engine.process_match_results, db, match_id)
     
     return {"message": "Result updated, prize calculation queued."}
+
+@router.post("/matches/{match_id}/notify")
+async def admin_notify_match(
+    match_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin_user)
+):
+    """Admin: Send a push notification to all users about this match."""
+    match = await db.get(Match, match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+        
+    # Get all active users with a valid push token
+    result = await db.execute(select(User).where(and_(User.is_active == True, User.push_token.isnot(None))))
+    users_with_tokens = result.scalars().all()
+    
+    success_count = 0
+    title = "New Match Alert! 🏆"
+    message = f"{match.team_a} vs {match.team_b} is open for predictions. Join now!"
+    
+    for user in users_with_tokens:
+        try:
+            send_push_message(
+                token=user.push_token,
+                message=message,
+                title=title,
+                extra={"url": f"/(protected)/match-details/{match.id}"}
+            )
+            
+            # Also insert in-app notification if needed (optional)
+            db.add(Notification(
+                user_id=user.id,
+                title=title,
+                message=message,
+                type="MATCH_UPDATE"
+            ))
+            success_count += 1
+        except Exception as e:
+            print(f"Failed to send push notification to user {user.id}: {e}")
+            pass
+
+    await db.commit()
+    return {"message": f"Successfully notified {success_count} users."}
 
 @router.patch("/matches/{match_id}/toggle-feature", response_model=MatchResponse)
 async def admin_toggle_feature_match(

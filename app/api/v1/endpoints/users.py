@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db, get_current_user
 from app.models.user import User
-from app.schemas.user import UserResponse, UserUpdateProfile, UserUpdatePassword, UserAvatarUpdate
+from app.schemas.user import UserResponse, UserUpdateProfile, UserUpdatePassword, UserAvatarUpdate, PushTokenInput
 from app.core.security import verify_password, get_password_hash
 
 load_dotenv()
@@ -107,3 +107,16 @@ async def upload_profile_photo(
     await db.refresh(current_user)
 
     return current_user
+
+@router.put("/me/push-token")
+async def register_push_token(
+    data: PushTokenInput,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Register or update Expo Push Token for the current user."""
+    current_user.push_token = data.push_token
+    db.add(current_user)
+    await db.commit()
+    
+    return {"message": "Push token updated successfully"}

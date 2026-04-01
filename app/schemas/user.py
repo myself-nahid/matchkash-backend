@@ -109,3 +109,6 @@ class UserResponse(BaseModel):
 
 class UserAvatarUpdate(BaseModel):
     profile_photo: HttpUrl
+
+class PushTokenInput(BaseModel):
+    push_token: str
