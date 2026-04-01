@@ -102,7 +102,6 @@ async def get_matches(
     query = (
         select(Match, participants_subquery.c.count)
         .outerjoin(participants_subquery, Match.id == participants_subquery.c.match_id)
-        .order_by(Match.match_time_start.asc())
     )
 
     # ── optional filters ────────────────────────────────────────────────────
@@ -118,17 +117,20 @@ async def get_matches(
     # ── tab filter (real-time aware) ────────────────────────────────────────
     tab_lc = tab.lower()
     if tab_lc == "upcoming":
-        # Matches that haven't kicked off yet
-        query = query.where(Match.status == MatchStatus.UPCOMING)
+        # Matches that haven't kicked off yet (closest to starting first)
+        query = query.where(Match.status == MatchStatus.UPCOMING).order_by(Match.match_time_start.asc())
     elif tab_lc == "live":
-        query = query.where(Match.status == MatchStatus.LIVE)
+        query = query.where(Match.status == MatchStatus.LIVE).order_by(Match.id.desc())
     elif tab_lc == "latest":
-        # Live + upcoming together (most relevant active matches)
+        # Live + upcoming together (closest to starting first)
         query = query.where(
             Match.status.in_([MatchStatus.LIVE, MatchStatus.UPCOMING])
         ).order_by(Match.match_time_start.asc())
     elif tab_lc == "completed":
-        query = query.where(Match.status == MatchStatus.COMPLETED)
+        query = query.where(Match.status == MatchStatus.COMPLETED).order_by(Match.id.desc())
+    else:
+        # "All" tab or fallback: newly created matches first
+        query = query.order_by(Match.id.desc())
 
     # ── count query (mirrors filters) ───────────────────────────────────────
     count_query = select(func.count(Match.id))

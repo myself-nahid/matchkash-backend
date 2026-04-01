@@ -445,6 +445,8 @@ async def admin_notify_match(
     users_with_tokens = result.scalars().all()
     
     success_count = 0
+    failed_count = 0
+    errors = []
     title = "New Match Alert! 🏆"
     message = f"{match.team_a} vs {match.team_b} is open for predictions. Join now!"
     
@@ -466,11 +468,16 @@ async def admin_notify_match(
             ))
             success_count += 1
         except Exception as e:
+            failed_count += 1
+            errors.append(str(e))
             print(f"Failed to send push notification to user {user.id}: {e}")
-            pass
 
     await db.commit()
-    return {"message": f"Successfully notified {success_count} users."}
+    return {
+        "message": f"Successfully notified {success_count} users.",
+        "failed": failed_count,
+        "errors": errors[:5]  # send first 5 errors to avoid huge payloads
+    }
 
 @router.patch("/matches/{match_id}/toggle-feature", response_model=MatchResponse)
 async def admin_toggle_feature_match(

@@ -7,10 +7,29 @@ from exponent_server_sdk import (
     PushTicketError,
 )
 from requests.exceptions import ConnectionError, HTTPError
+import requests
+import os
+
+from dotenv import load_dotenv
+load_dotenv()
 
 def send_push_message(token: str, message: str, title: str = None, extra: dict = None):
     try:
-        response = PushClient().publish(
+        session = requests.Session()
+        session.headers.update({
+            "accept": "application/json",
+            "accept-encoding": "gzip, deflate",
+            "content-type": "application/json",
+        })
+        expo_token = os.getenv("EXPO_ACCESS_TOKEN", None)
+        if expo_token:
+            session.headers.update({
+                "Authorization": f"Bearer {expo_token}"
+            })
+            
+        client = PushClient(session=session)
+        
+        response = client.publish(
             PushMessage(
                 to=token,
                 body=message,
