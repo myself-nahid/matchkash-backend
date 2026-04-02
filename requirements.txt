@@ -12,3 +12,4 @@ alembic
 argon2-cffi
 twilio
 httpx
+exponent-server-sdk
