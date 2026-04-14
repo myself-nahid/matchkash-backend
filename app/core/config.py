@@ -19,8 +19,22 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: Optional[str] = None
     TWILIO_PHONE_NUMBER: Optional[str] = None
 
-    # Third Party (MonCash / NatCash)
-    MONCASH_API_KEY: Optional[str] = None  # <--- THIS WAS MISSING
+    MONCASH_CLIENT_ID: Optional[str] = None
+    MONCASH_CLIENT_SECRET: Optional[str] = None
+    MONCASH_API_BASE_URL: str = "https://sandbox.moncashbutton.digicelgroup.com"
+
+    # UPDATED NATCASH SETTINGS
+    NATCASH_PARTNER_CODE: str = "XENTRA001"
+    NATCASH_USERNAME: str = "Xentra_admin"
+    NATCASH_PASSWORD: str = "Xentrasport$2026$"
+    
+    # You will need to get these two from the NatCash Sandbox Portal:
+    NATCASH_PRIVATE_KEY: str = "YOUR_NATCASH_PRIVATE_KEY" 
+    NATCASH_FUNCTION_CODE: str = "YOUR_NATCASH_FUNCTION_CODE" 
+    
+    NATCASH_API_BASE_URL: str = "https://testmerchantpay.natcom.com.ht/api"
+    # Update this to your current ngrok/devtunnels URL for testing webhooks
+    NATCASH_CALLBACK_URL: str = "https://wbsl64n9-8005.inc1.devtunnels.ms/api/v1/webhooks/natcash"
     
     # Pydantic V2 Configuration
     model_config = SettingsConfigDict(

@@ -18,6 +18,8 @@ from app.services.match_status_service import sync_match_statuses, compute_match
 from app.services.notification_service import send_push_message
 from app.core.security import verify_password, get_password_hash
 from app.models.setting import SystemSetting
+from app.services.moncash_service import execute_moncash_payout
+from app.services.natcash_service import execute_natcash_payout
 import os
 import uuid
 import shutil
@@ -871,34 +873,34 @@ async def get_all_withdrawals(
         "data": [AdminTransactionResponse.from_orm(tx) for tx in transactions]
     }
 
-@router.post("/withdrawals/{transaction_id}/approve", response_model=AdminTransactionResponse)
-async def approve_withdrawal(
-    transaction_id: int,
-    db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin_user)
-):
-    """Admin: Approve a pending withdrawal request"""
-    tx = await db.get(Transaction, transaction_id, options=[joinedload(Transaction.user)])
+# @router.post("/withdrawals/{transaction_id}/approve", response_model=AdminTransactionResponse)
+# async def approve_withdrawal(
+#     transaction_id: int,
+#     db: AsyncSession = Depends(get_db),
+#     admin: User = Depends(get_current_admin_user)
+# ):
+#     """Admin: Approve a pending withdrawal request"""
+#     tx = await db.get(Transaction, transaction_id, options=[joinedload(Transaction.user)])
     
-    if not tx or tx.type != "Withdraw" or tx.status != "Pending":
-        raise HTTPException(status_code=404, detail="Pending withdrawal not found")
+#     if not tx or tx.type != "Withdraw" or tx.status != "Pending":
+#         raise HTTPException(status_code=404, detail="Pending withdrawal not found")
 
-    # Change status to Completed
-    tx.status = "Completed"
-    # Notify the user that their withdrawal was approved
-    notification = Notification(
-        user_id=tx.user_id,
-        title="Withdrawal Approved",
-        message=f"Your withdrawal of {abs(tx.amount)} HTG has been processed.",
-        type="WITHDRAWAL_COMPLETED",
-        reference_id=tx.id
-    )
-    db.add(notification)
-    db.add(tx)
-    await db.commit()
-    await db.refresh(tx)
+#     # Change status to Completed
+#     tx.status = "Completed"
+#     # Notify the user that their withdrawal was approved
+#     notification = Notification(
+#         user_id=tx.user_id,
+#         title="Withdrawal Approved",
+#         message=f"Your withdrawal of {abs(tx.amount)} HTG has been processed.",
+#         type="WITHDRAWAL_COMPLETED",
+#         reference_id=tx.id
+#     )
+#     db.add(notification)
+#     db.add(tx)
+#     await db.commit()
+#     await db.refresh(tx)
     
-    return tx
+#     return tx
 
 @router.post("/withdrawals/{transaction_id}/reject", response_model=AdminTransactionResponse)
 async def reject_withdrawal(
@@ -1217,3 +1219,92 @@ async def get_withdrawal_modal_data(
         phone_number=phone_number,
         amount=abs(tx.amount) # Return as positive number for UI
     )
+
+@router.post("/withdrawals/{transaction_id}/approve", response_model=AdminTransactionResponse)
+async def approve_withdrawal(
+    transaction_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin_user)
+):
+    tx = await db.get(Transaction, transaction_id, options=[joinedload(Transaction.user)])
+    if not tx or tx.type != "Withdraw" or tx.status != "Pending":
+        raise HTTPException(status_code=404, detail="Pending withdrawal not found")
+
+    # Extract method and phone number (e.g., "Natcash - 5091234567")
+    method = "moncash"
+    phone_number = tx.user.phone
+    if tx.reference and " - " in tx.reference:
+        parts = tx.reference.split(" - ")
+        method = parts[0].lower()
+        phone_number = parts[1]
+
+    try:
+        # Route to the correct Payment Gateway
+        if method == "moncash":
+            print(f"💸 Sending {abs(tx.amount)} HTG to {phone_number} via MonCash...")
+            await execute_moncash_payout(receiver_phone=phone_number, amount=float(abs(tx.amount)), description="MatchKash Payout")
+        
+        elif method == "natcash":
+            print(f"💸 Sending {abs(tx.amount)} HTG to {phone_number} via NatCash...")
+            await execute_natcash_payout(receiver_phone=phone_number, amount=float(abs(tx.amount)), description="MatchKash Payout")
+        
+        else:
+            raise ValueError("Unknown payment method")
+
+        # Success logic
+        tx.status = "Completed"
+        notification = Notification(
+            user_id=tx.user_id,
+            title="Withdrawal Approved",
+            message=f"Your withdrawal of {abs(tx.amount)} HTG has been sent via {method.capitalize()}.",
+            type="WITHDRAWAL_COMPLETED",
+            reference_id=tx.id
+        )
+        db.add(notification)
+        db.add(tx)
+        await db.commit()
+        await db.refresh(tx)
+        
+        return tx
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"{method.capitalize()} Transfer Failed: {str(e)}")
+
+
+# ==========================================
+# --- TEMPORARY PAYMENT TEST ENDPOINT ---
+# ==========================================
+@router.post("/test-moncash-payout")
+async def test_moncash_payout(
+    admin: User = Depends(get_current_admin_user)
+):
+    """
+    A temporary endpoint to test a Payout (Withdrawal) to a user
+    using the MonCash sandbox API.
+    """
+    try:
+        # Use a test phone number
+        test_receiver_phone = "50900000000" 
+        test_amount = 5.0
+        test_description = f"Test Payout from MatchKash - {uuid.uuid4()}"
+
+        print(f"--- Initiating MonCash Sandbox Payout Test ---")
+        
+        # This calls the real service function
+        moncash_response = await execute_moncash_payout(
+            receiver_phone=test_receiver_phone,
+            amount=test_amount,
+            description=test_description
+        )
+        
+        return {
+            "status": "SUCCESS",
+            "message": "Successfully connected to MonCash and executed a test payout.",
+            "moncash_response": moncash_response
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to connect to MonCash. Error: {str(e)}"
+        )

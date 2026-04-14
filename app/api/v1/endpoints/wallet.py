@@ -8,6 +8,9 @@ from app.models.transaction import Transaction
 from app.schemas.wallet import WalletResponse, TransactionResponse, DepositRequest, WithdrawRequest
 from app.models.user import Notification
 from decimal import Decimal
+import uuid
+from app.services.moncash_service import create_moncash_payment
+from app.services.natcash_service import create_natcash_payment
 
 router = APIRouter()
 
@@ -35,39 +38,39 @@ async def get_my_transactions(
     )
     return result.scalars().all()
 
-@router.post("/deposit")
-async def request_deposit(
-    request: DepositRequest,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Mock Deposit: Instantly adds money for testing.
-    Later, this will connect to MonCash/NatCash Webhooks.
-    """
-    if request.amount <= 0:
-        raise HTTPException(status_code=400, detail="Amount must be greater than zero")
+# @router.post("/deposit")
+# async def request_deposit(
+#     request: DepositRequest,
+#     user: User = Depends(get_current_user),
+#     db: AsyncSession = Depends(get_db)
+# ):
+#     """
+#     Mock Deposit: Instantly adds money for testing.
+#     Later, this will connect to MonCash/NatCash Webhooks.
+#     """
+#     if request.amount <= 0:
+#         raise HTTPException(status_code=400, detail="Amount must be greater than zero")
 
-    wallet = await db.scalar(select(Wallet).where(Wallet.user_id == user.id))
+#     wallet = await db.scalar(select(Wallet).where(Wallet.user_id == user.id))
     
-    # 1. Add money to wallet
-    wallet.balance += request.amount
-    wallet.total_deposited += request.amount
+#     # 1. Add money to wallet
+#     wallet.balance += request.amount
+#     wallet.total_deposited += request.amount
 
-    # 2. Record Transaction
-    tx = Transaction(
-        user_id=user.id,
-        amount=request.amount,
-        type="Deposit",
-        status="Completed",
-        reference=f"{request.method} - {request.phone_number}"
-    )
+#     # 2. Record Transaction
+#     tx = Transaction(
+#         user_id=user.id,
+#         amount=request.amount,
+#         type="Deposit",
+#         status="Completed",
+#         reference=f"{request.method} - {request.phone_number}"
+#     )
     
-    db.add(wallet)
-    db.add(tx)
-    await db.commit()
+#     db.add(wallet)
+#     db.add(tx)
+#     await db.commit()
     
-    return {"message": "Deposit successful", "new_balance": wallet.balance}
+#     return {"message": "Deposit successful", "new_balance": wallet.balance}
 
 # @router.post("/withdraw")
 # async def request_withdrawal(
@@ -148,3 +151,58 @@ async def request_withdrawal(
     await db.commit()
     
     return {"message": "Withdrawal request submitted successfully. Waiting for admin approval."}
+
+@router.post("/deposit")
+async def request_deposit(
+    request: DepositRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if request.amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be greater than zero")
+
+    order_id = f"DEP-{user.id}-{uuid.uuid4().hex[:8]}"
+
+    tx = Transaction(
+        user_id=user.id,
+        amount=request.amount,
+        type="Deposit",
+        status="Pending",
+        reference=order_id 
+    )
+    db.add(tx)
+    await db.commit()
+
+    # --- MONCASH ---
+    if request.method.lower() == "moncash":
+        try:
+            payment_data = await create_moncash_payment(order_id=order_id, amount=float(request.amount))
+            return {
+                "status": "success",
+                "message": "Please complete the payment in the browser.",
+                "payment_url": payment_data["redirect_url"]
+            }
+        except Exception:
+            tx.status = "Failed"
+            await db.commit()
+            raise HTTPException(status_code=500, detail="Failed to initialize MonCash payment.")
+            
+    # --- NATCASH ---
+    elif request.method.lower() == "natcash":
+        try:
+            # NatCash usually sends the prompt directly to the phone number
+            await create_natcash_payment(
+                order_id=order_id, 
+                amount=float(request.amount), 
+                phone_number=request.phone_number
+            )
+            return {
+                "status": "success",
+                "message": "Check your phone for the NatCash PIN prompt.",
+            }
+        except Exception:
+            tx.status = "Failed"
+            await db.commit()
+            raise HTTPException(status_code=500, detail="Failed to initialize NatCash payment.")
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported payment method.")
