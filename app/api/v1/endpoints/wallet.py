@@ -199,6 +199,7 @@ async def request_deposit(
             return {
                 "status": "success",
                 "message": "Check your phone for the NatCash PIN prompt.",
+                # "payment_url": payment_data["redirect_url"]
             }
         except Exception:
             tx.status = "Failed"
