@@ -9,6 +9,8 @@ from app.schemas.user import TokenResponse, UserCreate, UserLogin, OTPVerify, Fo
 from app.api.deps import oauth2_scheme
 from jose import jwt, JWTError
 from app.core.config import settings
+from twilio.rest import Client
+from twilio.base.exceptions import TwilioRestException
 
 router = APIRouter()
 
@@ -16,8 +18,35 @@ def generate_otp():
     """Generates a random 6-digit OTP"""
     return str(random.randint(100000, 999999))
 
+def send_sms_otp(phone_number: str, otp_code: str):
+    """Sends a real SMS using Twilio"""
+    try:
+        client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+        message = client.messages.create(
+            body=f"Welcome to MatchKash! Your verification code is: {otp_code}",
+            from_=settings.TWILIO_PHONE_NUMBER,
+            to=phone_number
+        )
+        print(f"SMS sent successfully. Message SID: {message.sid}")
+        return True
+    except TwilioRestException as e:
+        print(f"Twilio Error: {e}")
+        # Log additional details for debugging
+        if hasattr(e, 'code'):
+            print(f"Twilio Error Code: {e.code}")
+        if hasattr(e, 'status'):
+            print(f"Twilio Status: {e.status}")
+        return False
+    except Exception as e:
+        print(f"Unexpected error sending SMS: {e}")
+        return False
+
 @router.post("/register")
 async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
+    # Prevent registration with Twilio phone number (Twilio doesn't allow sending SMS to itself)
+    if user_in.phone == settings.TWILIO_PHONE_NUMBER:
+        raise HTTPException(status_code=400, detail="Cannot register with this phone number")
+
     # Check if user exists
     result = await db.execute(select(User).where(User.phone == user_in.phone))
     user = result.scalars().first()
@@ -47,13 +76,19 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
 
     await db.commit()
 
-    # TODO: Integrate Twilio API here to send `otp` to `user_in.phone`
-    print(f"\n[MOCK SMS] Sent OTP: {otp} to {user_in.phone}\n")
+    # Send real OTP via Twilio
+    # Note: Ensure the phone number includes the country code (e.g., +880 for BD, +509 for Haiti)
+    sms_sent = send_sms_otp(user_in.phone, otp)
+    
+    if not sms_sent:
+        raise HTTPException(
+            status_code=500, 
+            detail="Failed to send SMS. Please check if the phone number is correct."
+        )
 
     return {
         "message": "OTP sent successfully to your phone number",
-        "phone": user_in.phone,
-        "mock_otp": otp  
+        "phone": user_in.phone
     }
 
 # this is real twilio otp send function, when client give twilio credentials that time implelent this function
@@ -165,6 +200,10 @@ async def verify_otp(data: OTPVerify, db: AsyncSession = Depends(get_db)):
 async def resend_otp(data: ResendOTP, db: AsyncSession = Depends(get_db)):
     """Generate a new OTP and resend it to the user"""
     
+    # Check if phone number is the same as Twilio number
+    if data.phone == settings.TWILIO_PHONE_NUMBER:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
+    
     # 1. Find the user by phone
     result = await db.execute(select(User).where(User.phone == data.phone))
     user = result.scalars().first()
@@ -180,21 +219,13 @@ async def resend_otp(data: ResendOTP, db: AsyncSession = Depends(get_db)):
     db.add(user)
     await db.commit()
 
-    # 4. Send the SMS (Using Mock for now, replace with Twilio later)
-    print("\n" + "="*50)
-    print(f"📲 [MOCK SMS] RESENDING OTP")
-    print(f"To Phone: {data.phone}")
-    print(f"Your NEW OTP Code is: {new_otp}")
-    print("="*50 + "\n")
-
-    # If using real Twilio:
-    # sms_sent = send_sms_otp(user.phone, new_otp)
-    # if not sms_sent:
-    #     raise HTTPException(status_code=500, detail="Failed to send SMS")
+    # 4. Send the SMS via Twilio
+    sms_sent = send_sms_otp(user.phone, new_otp)
+    if not sms_sent:
+        raise HTTPException(status_code=500, detail="Failed to send SMS")
 
     return {
-        "message": "A new OTP has been sent to your phone number.",
-        "mock_otp_hint": new_otp 
+        "message": "A new OTP has been sent to your phone number."
     }
 
 @router.post("/login", response_model=TokenResponse)
@@ -325,7 +356,11 @@ async def refresh_access_token(data: TokenRefreshRequest, db: AsyncSession = Dep
 
 @router.post("/forgot-password")
 async def forgot_password(data: ForgotPassword, db: AsyncSession = Depends(get_db)):
-    """Step 1: Request an OTP to reset the password (MOCK)"""
+    """Step 1: Request an OTP to reset the password"""
+    
+    # Check if phone number is the same as Twilio number
+    if data.phone == settings.TWILIO_PHONE_NUMBER:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
     
     # 1. Check if user exists
     result = await db.execute(select(User).where(User.phone == data.phone))
@@ -335,21 +370,20 @@ async def forgot_password(data: ForgotPassword, db: AsyncSession = Depends(get_d
         raise HTTPException(status_code=404, detail="User with this phone number not found")
 
     # 2. Generate new OTP and save to database
-    otp = str(random.randint(100000, 999999))
+    otp = generate_otp()
     user.otp_code = otp
     await db.commit()
 
-    # 3. MOCK SMS - Print to terminal instead of sending real SMS
-    print("\n" + "="*50)
-    print(f"[MOCK SMS] Password Reset Request")
-    print(f"To Phone: {data.phone}")
-    print(f"Your OTP Code is: {otp}")
-    print("="*50 + "\n")
+    # 3. Send SMS via Twilio
+    sms_sent = send_sms_otp(user.phone, otp)
+    
+    if not sms_sent:
+        raise HTTPException(
+            status_code=500, 
+            detail="Failed to send SMS. Please try again later."
+        )
 
-    return {
-        "message": "OTP sent successfully. Please check your phone (or terminal).",
-        "mock_otp_hint": otp  # You can remove this line in production!
-    }
+    return {"message": "OTP sent successfully. Please check your phone."}
 
 @router.post("/forgot-password-verify-otp")
 async def forgot_password_verify_otp(data: OTPVerify, db: AsyncSession = Depends(get_db)):
