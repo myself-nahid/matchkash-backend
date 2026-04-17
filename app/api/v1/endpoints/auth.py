@@ -23,7 +23,7 @@ def send_sms_otp(phone_number: str, otp_code: str):
     try:
         client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
         message = client.messages.create(
-            body=f"Welcome to MatchKash! Your verification code is: {otp_code}",
+            body=f"Xentra: Your verification code is {otp_code}. Do not share this code.",
             from_=settings.TWILIO_PHONE_NUMBER,
             to=phone_number
         )
