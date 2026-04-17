@@ -2,6 +2,7 @@ import random
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from app.api.deps import get_db
 from app.core.security import create_access_token, create_refresh_token, get_password_hash, verify_password
 from app.models.user import User, Wallet, TokenBlocklist
@@ -74,7 +75,14 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
         )
         db.add(new_user)
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=400, 
+            detail="Phone number is already registered or request was sent twice. Please log in."
+        )
 
     # Send real OTP via Twilio
     # Note: Ensure the phone number includes the country code (e.g., +880 for BD, +509 for Haiti)
