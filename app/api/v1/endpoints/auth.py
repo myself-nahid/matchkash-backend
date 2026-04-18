@@ -20,26 +20,65 @@ def generate_otp():
     return str(random.randint(100000, 999999))
 
 def send_sms_otp(phone_number: str, otp_code: str):
-    """Sends a real SMS using Twilio"""
+    """
+    Sends OTP using a 3-tier fallback system:
+    1. WhatsApp
+    2. SMS via Alphanumeric Sender ID ('Xentra')
+    3. SMS via Standard Twilio Number
+    """
+    # Ensure the phone number has a '+' sign for Twilio
+    if not phone_number.startswith("+"):
+        phone_number = "+" + phone_number
+
+    message_body = f"Welcome to Xentra! Your verification code is: {otp_code}"
+    
     try:
         client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
-        message = client.messages.create(
-            body=f"Xentra: Your verification code is {otp_code}. Do not share this code.",
-            from_=settings.TWILIO_PHONE_NUMBER,
-            to=phone_number
-        )
-        print(f"SMS sent successfully. Message SID: {message.sid}")
-        return True
-    except TwilioRestException as e:
-        print(f"Twilio Error: {e}")
-        # Log additional details for debugging
-        if hasattr(e, 'code'):
-            print(f"Twilio Error Code: {e.code}")
-        if hasattr(e, 'status'):
-            print(f"Twilio Status: {e.status}")
-        return False
-    except Exception as e:
-        print(f"Unexpected error sending SMS: {e}")
+        
+        # --- ATTEMPT 1: WHATSAPP ---
+        try:
+            print(f"🔄 Attempting WhatsApp OTP to {phone_number}...")
+            message = client.messages.create(
+                body=message_body,
+                from_=f"whatsapp:{settings.TWILIO_PHONE_NUMBER}",
+                to=f"whatsapp:{phone_number}"
+            )
+            print(f"✅ WhatsApp OTP sent successfully! SID: {message.sid}")
+            return True
+        except TwilioRestException as e:
+            print(f"⚠️ WhatsApp failed (User might not have WA). Error: {e.msg}")
+            print("🔄 Falling back to Alphanumeric SMS...")
+
+        # --- ATTEMPT 2: ALPHANUMERIC SMS ("Xentra") ---
+        try:
+            # Note: This will automatically bypass US A2P 10DLC restrictions 
+            # for international numbers that support Alphanumeric IDs (like Haiti).
+            message = client.messages.create(
+                body=message_body,
+                from_="Xentra",  
+                to=phone_number
+            )
+            print(f"✅ Alphanumeric SMS ('Xentra') sent successfully! SID: {message.sid}")
+            return True
+        except TwilioRestException as e:
+            print(f"⚠️ Alphanumeric SMS failed. Error: {e.msg}")
+            print("🔄 Falling back to standard SMS routing...")
+
+        # --- ATTEMPT 3: STANDARD SMS FALLBACK ---
+        try:
+            message = client.messages.create(
+                body=message_body,
+                from_=settings.TWILIO_PHONE_NUMBER,
+                to=phone_number
+            )
+            print(f"✅ Standard SMS sent successfully! SID: {message.sid}")
+            return True
+        except TwilioRestException as final_e:
+            print(f"❌ ALL OTP DELIVERY METHODS FAILED: {final_e.msg}")
+            return False
+
+    except Exception as critical_error:
+        print(f"❌ CRITICAL TWILIO ERROR: {str(critical_error)}")
         return False
 
 @router.post("/register")
