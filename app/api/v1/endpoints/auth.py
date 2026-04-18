@@ -12,6 +12,8 @@ from jose import jwt, JWTError
 from app.core.config import settings
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
+from app.core.utils import normalize_phone_number
+from sqlalchemy import func
 
 router = APIRouter()
 
@@ -277,23 +279,50 @@ async def resend_otp(data: ResendOTP, db: AsyncSession = Depends(get_db)):
 
 @router.post("/login", response_model=TokenResponse)
 async def login(user_in: UserLogin, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.phone == user_in.phone))
-    user = result.scalars().first()
+    # 1. Normalize the phone number from the frontend request
+    normalized_phone = normalize_phone_number(user_in.phone)
+    if not normalized_phone:
+        raise HTTPException(status_code=400, detail="Invalid phone number format")
 
-    if not user or not verify_password(user_in.password, user.hashed_password):
+    # 2. Find ALL potential users whose normalized phone number ends with the input
+    # This handles different country codes and formatting.
+    # Note: In PostgreSQL, 'g' flag for global replace is the default.
+    query = select(User).where(
+        func.regexp_replace(User.phone, r'\D', '').like(f"%{normalized_phone}")
+    )
+    result = await db.execute(query)
+    potential_users = result.scalars().all()
+
+    # 3. If no potential users are found, it's an incorrect phone number
+    if not potential_users:
         raise HTTPException(status_code=400, detail="Incorrect phone or password")
-    
-    if not user.is_active:
+
+    # 4. Loop through the potential users and find the one with the matching password
+    authenticated_user = None
+    for user in potential_users:
+        if verify_password(user_in.password, user.hashed_password):
+            authenticated_user = user
+            break  # Found our user, stop looping
+
+    # 5. If no user had a matching password after the loop, it's an incorrect password
+    if not authenticated_user:
+        raise HTTPException(status_code=400, detail="Incorrect phone or password")
+        
+    # 6. Check if the authenticated user's account is active
+    if not authenticated_user.is_active:
         raise HTTPException(status_code=400, detail="Account is not verified. Please verify your OTP.")
 
-    access_token = create_access_token(subject=user.id)
+    # 7. Generate and return tokens for the correct user
+    access_token = create_access_token(subject=authenticated_user.id)
+    refresh_token = create_refresh_token(subject=authenticated_user.id)
+    
     return {
         "status": "success",
         "message": "Login successful",
         "data": {
             "access_token": access_token,
-            "user_role": user.role,
-            "refresh_token": create_refresh_token(subject=user.id)
+            "user_role": authenticated_user.role,
+            "refresh_token": refresh_token
         }
     }
 
