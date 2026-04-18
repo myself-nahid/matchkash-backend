@@ -49,7 +49,8 @@ origins = [
     "http://10.10.12.70:3001",  
     "http://10.10.12.70:3000",
     "http://10.10.12.11:3000",
-    "https://xentra-admin-dashboard.vercel.app"
+    "https://xentra-admin-dashboard.vercel.app",
+    "https://admin.xentrasports.com"
 ]
 
 # CORS (Allow Flutter App)
