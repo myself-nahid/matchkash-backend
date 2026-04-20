@@ -568,40 +568,37 @@ async def admin_get_all_users(
 ):
     """Admin: Get a list of all users, EXCLUDING the current admin."""
     
-    # Subqueries for stats (these remain the same)
+    # Subqueries for stats
     contest_joined_sq = select(Prediction.user_id, func.count().label("contest_count")).group_by(Prediction.user_id).subquery()
     win_sq = select(Prediction.user_id, func.count().label("win_count")).where(Prediction.status == "WON").group_by(Prediction.user_id).subquery()
     lose_sq = select(Prediction.user_id, func.count().label("lose_count")).where(Prediction.status == "LOST").group_by(Prediction.user_id).subquery()
 
-    # Add a .where() clause to filter out the current admin's ID
-    base_query = select(User).where(User.id != admin.id)
-
-    # Count total records for pagination (excluding the admin)
-    count_query = select(func.count()).select_from(base_query.subquery())
+    # Base query to count total users, excluding the current admin
+    count_query = select(func.count(User.id)).where(User.id != admin.id)
     total_records = await db.scalar(count_query)
-    total_pages = (total_records + page_size - 1) // page_size
+    total_pages = (total_records + page_size - 1) // page_size if total_records else 0
 
-    # Main query to fetch user data
     query = (
         select(
-            User.id, User.full_name, User.phone, User.is_active,
+            User.id, 
+            User.full_name, 
+            User.phone, 
+            User.is_active,
             func.coalesce(Wallet.balance, Decimal('0.00')).label("balance"), 
             func.coalesce(contest_joined_sq.c.contest_count, 0).label("contest_joined"),
             func.coalesce(win_sq.c.win_count, 0).label("total_win"),
             func.coalesce(lose_sq.c.lose_count, 0).label("total_lose")
         )
-        .select_from(base_query.subquery()) # Use the filtered base query
+        .where(User.id != admin.id) # Apply the filter directly here
         .outerjoin(Wallet, User.id == Wallet.user_id)
         .outerjoin(contest_joined_sq, User.id == contest_joined_sq.c.user_id)
         .outerjoin(win_sq, User.id == win_sq.c.user_id)
         .outerjoin(lose_sq, User.id == lose_sq.c.user_id)
         .order_by(User.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
     )
-
-    # Apply pagination
-    offset = (page - 1) * page_size
-    query = query.offset(offset).limit(page_size)
-
+    
     result = await db.execute(query)
     users_data = result.mappings().all()
 
