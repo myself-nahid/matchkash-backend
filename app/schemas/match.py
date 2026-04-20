@@ -28,7 +28,6 @@ class MatchResponse(BaseModel):
     entry_fee: Decimal
     image_url: Optional[str] = None
     status: str
-    entry_fee: Decimal
     score_a: Optional[int] = None
     score_b: Optional[int] = None
     winning_team: Optional[str] = None
