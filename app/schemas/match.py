@@ -29,6 +29,9 @@ class MatchResponse(BaseModel):
     image_url: Optional[str] = None
     status: str
     entry_fee: Decimal
+    score_a: Optional[int] = None
+    score_b: Optional[int] = None
+    winning_team: Optional[str] = None
     
     # Dynamically calculated fields for the UI
     prize_pool: Decimal = 0.00

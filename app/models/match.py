@@ -33,6 +33,7 @@ class Match(Base):
     # Results
     score_a = Column(Integer, nullable=True)
     score_b = Column(Integer, nullable=True)
+    winning_team = Column(String, nullable=True) # "A", "B", or "Draw"
 
     predictions = relationship("Prediction", back_populates="match")
 
