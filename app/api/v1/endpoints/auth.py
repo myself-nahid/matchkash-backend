@@ -288,7 +288,7 @@ async def login(user_in: UserLogin, db: AsyncSession = Depends(get_db)):
     # This handles different country codes and formatting.
     # Note: In PostgreSQL, 'g' flag for global replace is the default.
     query = select(User).where(
-    func.regexp_replace(User.phone, r'\D', '', 'g').like(f"%{normalized_phone}")
+    func.regexp_replace(User.phone, '[^0-9]', '', 'g').like(f"%{normalized_phone}")
     )
     result = await db.execute(query)
     potential_users = result.scalars().all()
