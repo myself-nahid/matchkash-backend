@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List
@@ -177,33 +178,53 @@ async def request_deposit(
     if request.method.lower() == "moncash":
         try:
             payment_data = await create_moncash_payment(order_id=order_id, amount=float(request.amount))
+            
+            redirect_url = payment_data.get("redirect_url")
+            
+            if not redirect_url:
+                raise Exception("MonCash did not return a valid redirect URL.")
+
+            # 👇 FIX: Return an auto-submitting HTML form to handle the 405 error
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+                <head>
+                    <title>Redirecting to MonCash...</title>
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                </head>
+                <body onload="document.forms[0].submit()" style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+                    <form action="{redirect_url}" method="get">
+                        <p>Redirecting you to MonCash to complete your payment...</p>
+                        <p>If you are not redirected automatically, please click the button below.</p>
+                        <input type="submit" value="Proceed to MonCash" style="padding: 10px 20px; font-size: 16px;">
+                    </form>
+                </body>
+            </html>
+            """
+            return HTMLResponse(content=html_content)
+
+        except Exception as e:
+            tx.status = "Failed"
+            await db.commit()
+            raise HTTPException(status_code=500, detail=f"Failed to initialize MonCash payment: {str(e)}")
+            
+    # --- NATCASH ---
+    elif request.method.lower() == "natcash":
+        try:
+            payment_data = await create_natcash_payment(
+                order_id=order_id, 
+                amount=float(request.amount), 
+                phone_number=request.phone_number
+            )
+            # NatCash returns a URL that the frontend should open
             return {
                 "status": "success",
                 "message": "Please complete the payment in the browser.",
                 "payment_url": payment_data["redirect_url"]
             }
-        except Exception:
+        except Exception as e:
             tx.status = "Failed"
             await db.commit()
-            raise HTTPException(status_code=500, detail="Failed to initialize MonCash payment.")
-            
-    # --- NATCASH ---
-    elif request.method.lower() == "natcash":
-        try:
-            # NatCash usually sends the prompt directly to the phone number
-            await create_natcash_payment(
-                order_id=order_id, 
-                amount=float(request.amount), 
-                phone_number=request.phone_number
-            )
-            return {
-                "status": "success",
-                "message": "Check your phone for the NatCash PIN prompt.",
-                # "payment_url": payment_data["redirect_url"]
-            }
-        except Exception:
-            tx.status = "Failed"
-            await db.commit()
-            raise HTTPException(status_code=500, detail="Failed to initialize NatCash payment.")
+            raise HTTPException(status_code=500, detail=f"Failed to initialize NatCash payment: {str(e)}")
     else:
         raise HTTPException(status_code=400, detail="Unsupported payment method.")
