@@ -178,31 +178,11 @@ async def request_deposit(
     if request.method.lower() == "moncash":
         try:
             payment_data = await create_moncash_payment(order_id=order_id, amount=float(request.amount))
-            
-            redirect_url = payment_data.get("redirect_url")
-            
-            if not redirect_url:
-                raise Exception("MonCash did not return a valid redirect URL.")
-
-            # 👇 FIX: Return an auto-submitting HTML form to handle the 405 error
-            html_content = f"""
-            <!DOCTYPE html>
-            <html>
-                <head>
-                    <title>Redirecting to MonCash...</title>
-                    <meta name="viewport" content="width=device-width, initial-scale=1">
-                </head>
-                <body onload="document.forms[0].submit()" style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-                    <form action="{redirect_url}" method="post">
-                        <p>Redirecting you to MonCash to complete your payment...</p>
-                        <p>If you are not redirected automatically, please click the button below.</p>
-                        <input type="submit" value="Proceed to MonCash" style="padding: 10px 20px; font-size: 16px;">
-                    </form>
-                </body>
-            </html>
-            """
-            return HTMLResponse(content=html_content)
-
+            return {
+                "status": "success",
+                "message": "Please complete the payment in the browser.",
+                "payment_url": payment_data["redirect_url"]
+            }
         except Exception as e:
             tx.status = "Failed"
             await db.commit()
@@ -216,7 +196,6 @@ async def request_deposit(
                 amount=float(request.amount), 
                 phone_number=request.phone_number
             )
-            # NatCash returns a URL that the frontend should open
             return {
                 "status": "success",
                 "message": "Please complete the payment in the browser.",
