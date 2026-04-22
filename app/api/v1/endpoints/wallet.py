@@ -193,7 +193,7 @@ async def request_deposit(
                     <meta name="viewport" content="width=device-width, initial-scale=1">
                 </head>
                 <body onload="document.forms[0].submit()" style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-                    <form action="{redirect_url}" method="get">
+                    <form action="{redirect_url}" method="post">
                         <p>Redirecting you to MonCash to complete your payment...</p>
                         <p>If you are not redirected automatically, please click the button below.</p>
                         <input type="submit" value="Proceed to MonCash" style="padding: 10px 20px; font-size: 16px;">
