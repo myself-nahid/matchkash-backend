@@ -46,7 +46,8 @@ async def create_moncash_payment(order_id: str, amount: float) -> dict:
             data = response.json()
             
             token = data.get("payment_token", {}).get("token")
-            redirect_url = f"https://sandbox.moncashbutton.digicelgroup.com/Moncash-middleware/Checkout/Payment?token={token}"
+            # 👇 FIX: Use the correct /Payment/Redirect path
+            redirect_url = f"{settings.MONCASH_API_BASE_URL}/Moncash-middleware/Payment/Redirect?token={token}"
             
             print(f"✅ Successfully created real MonCash payment link: {redirect_url}")
             return {
