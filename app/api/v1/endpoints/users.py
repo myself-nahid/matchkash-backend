@@ -120,3 +120,13 @@ async def register_push_token(
     await db.commit()
     
     return {"message": "Push token updated successfully"}
+
+@router.delete("/me", status_code=204)
+async def delete_my_account(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Delete the current user's account permanently."""
+    await db.delete(current_user)
+    await db.commit()
+    return {"message": "Account deleted successfully."}
